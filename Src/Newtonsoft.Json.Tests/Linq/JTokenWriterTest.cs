@@ -25,15 +25,11 @@
 
 using System;
 using System.Collections.Generic;
-#if !(NET20 || NET35 || PORTABLE || PORTABLE40)
+#if !(NET20 || NET35 || PORTABLE || PORTABLE40) || NETSTANDARD1_3 || NETSTANDARD2_0
 using System.Numerics;
 #endif
 using System.Text;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
@@ -124,7 +120,7 @@ namespace Newtonsoft.Json.Tests.Linq
                 jsonWriter.WriteValue("DVD read/writer");
                 Assert.AreEqual(WriteState.Array, jsonWriter.WriteState);
 
-#if !(NET20 || NET35 || PORTABLE || ASPNETCORE50 || PORTABLE40)
+#if !(NET20 || NET35 || PORTABLE || PORTABLE40) || NETSTANDARD1_3 || NETSTANDARD2_0
                 jsonWriter.WriteValue(new BigInteger(123));
                 Assert.AreEqual(WriteState.Array, jsonWriter.WriteState);
 #endif
@@ -141,6 +137,62 @@ namespace Newtonsoft.Json.Tests.Linq
         }
 
         [Test]
+        public void CurrentToken()
+        {
+            using (JTokenWriter jsonWriter = new JTokenWriter())
+            {
+                Assert.AreEqual(WriteState.Start, jsonWriter.WriteState);
+                Assert.AreEqual(null, jsonWriter.CurrentToken);
+
+                jsonWriter.WriteStartObject();
+                Assert.AreEqual(WriteState.Object, jsonWriter.WriteState);
+                Assert.AreEqual(jsonWriter.Token, jsonWriter.CurrentToken);
+
+                JObject o = (JObject)jsonWriter.Token;
+
+                jsonWriter.WritePropertyName("CPU");
+                Assert.AreEqual(WriteState.Property, jsonWriter.WriteState);
+                Assert.AreEqual(o.Property("CPU"), jsonWriter.CurrentToken);
+
+                jsonWriter.WriteValue("Intel");
+                Assert.AreEqual(WriteState.Object, jsonWriter.WriteState);
+                Assert.AreEqual(o["CPU"], jsonWriter.CurrentToken);
+
+                jsonWriter.WritePropertyName("Drives");
+                Assert.AreEqual(WriteState.Property, jsonWriter.WriteState);
+                Assert.AreEqual(o.Property("Drives"), jsonWriter.CurrentToken);
+
+                jsonWriter.WriteStartArray();
+                Assert.AreEqual(WriteState.Array, jsonWriter.WriteState);
+                Assert.AreEqual(o["Drives"], jsonWriter.CurrentToken);
+
+                JArray a = (JArray)jsonWriter.CurrentToken;
+
+                jsonWriter.WriteValue("DVD read/writer");
+                Assert.AreEqual(WriteState.Array, jsonWriter.WriteState);
+                Assert.AreEqual(a[a.Count - 1], jsonWriter.CurrentToken);
+
+#if !(NET20 || NET35 || PORTABLE || PORTABLE40) || NETSTANDARD1_3 || NETSTANDARD2_0
+                jsonWriter.WriteValue(new BigInteger(123));
+                Assert.AreEqual(WriteState.Array, jsonWriter.WriteState);
+                Assert.AreEqual(a[a.Count - 1], jsonWriter.CurrentToken);
+#endif
+
+                jsonWriter.WriteValue(new byte[0]);
+                Assert.AreEqual(WriteState.Array, jsonWriter.WriteState);
+                Assert.AreEqual(a[a.Count - 1], jsonWriter.CurrentToken);
+
+                jsonWriter.WriteEnd();
+                Assert.AreEqual(WriteState.Object, jsonWriter.WriteState);
+                Assert.AreEqual(a, jsonWriter.CurrentToken);
+
+                jsonWriter.WriteEndObject();
+                Assert.AreEqual(WriteState.Start, jsonWriter.WriteState);
+                Assert.AreEqual(o, jsonWriter.CurrentToken);
+            }
+        }
+
+        [Test]
         public void WriteComment()
         {
             JTokenWriter writer = new JTokenWriter();
@@ -153,7 +205,7 @@ namespace Newtonsoft.Json.Tests.Linq
   /*fail*/]", writer.Token.ToString());
         }
 
-#if !(NET20 || NET35 || PORTABLE || ASPNETCORE50 || PORTABLE40)
+#if !(NET20 || NET35 || PORTABLE || PORTABLE40) || NETSTANDARD1_3 || NETSTANDARD2_0
         [Test]
         public void WriteBigInteger()
         {
@@ -194,6 +246,100 @@ namespace Newtonsoft.Json.Tests.Linq
         }
 
         [Test]
+        public void WriteTokenWithParent()
+        {
+            JObject o = new JObject
+            {
+                ["prop1"] = new JArray(1),
+                ["prop2"] = 1
+            };
+
+            JTokenWriter writer = new JTokenWriter();
+
+            writer.WriteStartArray();
+
+            writer.WriteToken(o.CreateReader());
+
+            Assert.AreEqual(WriteState.Array, writer.WriteState);
+
+            writer.WriteEndArray();
+
+            Console.WriteLine(writer.Token.ToString());
+
+            StringAssert.AreEqual(@"[
+  {
+    ""prop1"": [
+      1
+    ],
+    ""prop2"": 1
+  }
+]", writer.Token.ToString());
+        }
+
+        [Test]
+        public void WriteTokenWithPropertyParent()
+        {
+            JValue v = new JValue(1);
+
+            JTokenWriter writer = new JTokenWriter();
+
+            writer.WriteStartObject();
+            writer.WritePropertyName("Prop1");
+
+            writer.WriteToken(v.CreateReader());
+
+            Assert.AreEqual(WriteState.Object, writer.WriteState);
+
+            writer.WriteEndObject();
+
+            StringAssert.AreEqual(@"{
+  ""Prop1"": 1
+}", writer.Token.ToString());
+        }
+
+        [Test]
+        public void WriteValueTokenWithParent()
+        {
+            JValue v = new JValue(1);
+
+            JTokenWriter writer = new JTokenWriter();
+
+            writer.WriteStartArray();
+
+            writer.WriteToken(v.CreateReader());
+
+            Assert.AreEqual(WriteState.Array, writer.WriteState);
+
+            writer.WriteEndArray();
+
+            StringAssert.AreEqual(@"[
+  1
+]", writer.Token.ToString());
+        }
+
+        [Test]
+        public void WriteEmptyToken()
+        {
+            JObject o = new JObject();
+            JsonReader reader = o.CreateReader();
+            while (reader.Read())
+            {   
+            }
+
+            JTokenWriter writer = new JTokenWriter();
+
+            writer.WriteStartArray();
+
+            writer.WriteToken(reader);
+
+            Assert.AreEqual(WriteState.Array, writer.WriteState);
+
+            writer.WriteEndArray();
+
+            StringAssert.AreEqual(@"[]", writer.Token.ToString());
+        }
+
+        [Test]
         public void WriteRawValue()
         {
             JTokenWriter writer = new JTokenWriter();
@@ -207,6 +353,28 @@ namespace Newtonsoft.Json.Tests.Linq
   fail,
   fail
 ]", writer.Token.ToString());
+        }
+
+        [Test]
+        public void WriteDuplicatePropertyName()
+        {
+            JTokenWriter writer = new JTokenWriter();
+
+            writer.WriteStartObject();
+
+            writer.WritePropertyName("prop1");
+            writer.WriteStartObject();
+            writer.WriteEndObject();
+
+            writer.WritePropertyName("prop1");
+            writer.WriteStartArray();
+            writer.WriteEndArray();
+
+            writer.WriteEndObject();
+
+            StringAssert.AreEqual(@"{
+  ""prop1"": []
+}", writer.Token.ToString());
         }
 
         [Test]

@@ -9,9 +9,9 @@
     <introduction>
       <para>JsonSerializer has a number of properties on it to customize how it serializes JSON. These can also be used
       with the methods on JsonConvert via the <codeEntityReference>T:Newtonsoft.Json.JsonSerializerSettings</codeEntityReference> overloads.</para>
+      <autoOutline lead="none" excludeRelatedTopics="true" />
     </introduction>
-<sections>
-<section>
+<section address="DateFormatHandling">
  <title>DateFormatHandling</title>
  <content><para><codeEntityReference>T:Newtonsoft.Json.DateFormatHandling</codeEntityReference> controls how dates are serialized.</para>
  
@@ -35,7 +35,7 @@
 </content>
 </section>
 
-<section>
+<section address="MissingMemberHandling">
  <title>MissingMemberHandling</title>
  <content><para><codeEntityReference>T:Newtonsoft.Json.MissingMemberHandling</codeEntityReference> controls how missing members, e.g. JSON contains a property that isn't a member on the object, are handled during deserialization.</para>
  
@@ -59,7 +59,7 @@
 </content>
 </section>
 
-<section>
+<section address="ReferenceLoopHandling">
  <title>ReferenceLoopHandling</title>
  <content>
    <para><codeEntityReference>T:Newtonsoft.Json.ReferenceLoopHandling</codeEntityReference> controls how circular referencing objects,
@@ -75,15 +75,15 @@
     </row>
   </tableHeader>
   <row>
-    <entry><para>Error</para></entry>
+    <entry><para><legacyBold>Error</legacyBold></para></entry>
     <entry><para>By default Json.NET will error if a reference loop is encountered (otherwise the serializer will get into an infinite loop).</para></entry>
   </row>
   <row>
-    <entry><para>Ignore</para></entry>
+    <entry><para><legacyBold>Ignore</legacyBold></para></entry>
     <entry><para>Json.NET will ignore objects in reference loops and not serialize them. The first time an object is encountered it will be serialized as usual but if the object is encountered as a child object of itself the serializer will skip serializing it.</para></entry>
   </row>
   <row>
-    <entry><para>Serialize</para></entry>
+    <entry><para><legacyBold>Serialize</legacyBold></para></entry>
     <entry><para>This option forces Json.NET to serialize objects in reference loops. This is useful if objects are nested but not indefinitely.</para></entry>
   </row>
 </table>
@@ -95,7 +95,7 @@ or a property's object properties or collection items using
 </content>
 </section>
 
-<section>
+<section address="NullValueHandling">
  <title>NullValueHandling</title>
  <content><para><codeEntityReference>T:Newtonsoft.Json.NullValueHandling</codeEntityReference> controls how null values on .NET objects are handled during serialization and how null values in JSON are handled during deserialization.</para>
  
@@ -107,11 +107,11 @@ or a property's object properties or collection items using
     </row>
   </tableHeader>
   <row>
-    <entry><para>Include</para></entry>
+    <entry><para><legacyBold>Include</legacyBold></para></entry>
     <entry><para>By default Json.NET writes null values to JSON when serializing and sets null values to fields/properties when deserializing.</para></entry>
   </row>
   <row>
-    <entry><para>Ignore</para></entry>
+    <entry><para><legacyBold>Ignore</legacyBold></para></entry>
     <entry><para>Json.NET will skip writing JSON properties if the .NET value is null when serializing and will skip setting fields/properties if the JSON property is null when deserializing.</para></entry>
   </row>
 </table>
@@ -120,7 +120,7 @@ or a property's object properties or collection items using
 </content>
 </section>
 
-<section>
+<section address="DefaultValueHandling">
  <title>DefaultValueHandling</title>
  <content><para><codeEntityReference>T:Newtonsoft.Json.DefaultValueHandling</codeEntityReference> controls how Json.NET uses default values set using the .NET <codeEntityReference>T:System.ComponentModel.DefaultValueAttribute</codeEntityReference> when serializing and deserializing.</para>
  
@@ -148,7 +148,7 @@ or a property's object properties or collection items using
 </content>
 </section>
 
-<section>
+<section address="ObjectCreationHandling">
  <title>ObjectCreationHandling</title>
  <content><para><codeEntityReference>T:Newtonsoft.Json.ObjectCreationHandling</codeEntityReference> controls how objects are created and deserialized to during deserialization.</para>
  
@@ -177,19 +177,32 @@ or a property's object properties or collection items using
 </content>
 </section>
 
-<section>
+<section address="TypeNameHandling">
  <title>TypeNameHandling</title>
  <content>
+ <alert class="caution">
+  <para>
+ <codeEntityReference>T:Newtonsoft.Json.TypeNameHandling</codeEntityReference> should be used with caution when your application deserializes JSON from an external source.
+  </para>
+  <para>
+    Incoming types should be validated with a custom <codeEntityReference>T:Newtonsoft.Json.Serialization.ISerializationBinder</codeEntityReference> when deserializing with a value other than <codeInline>TypeNameHandling.None</codeInline>.
+  </para>
+ </alert>
+ 
  <para>
    <codeEntityReference>T:Newtonsoft.Json.TypeNameHandling</codeEntityReference> controls whether Json.NET includes .NET type names
-   during serialization with a $type property and reads .NET type names from that property to determine what type to create during
+   during serialization with a <codeInline>$type</codeInline> property and reads .NET type names from that property to determine what type to create during
    deserialization.
  </para>
  <para>
-   The value of the $type property can be customized by creating your own 
-   <codeEntityReference>T:System.Runtime.Serialization.SerializationBinder</codeEntityReference>.
+   Metadata properties like <codeInline>$type</codeInline> must be located at the beginning of a JSON object to be successfully detected during deserialization. If you can't control
+   the order of properties in your JSON object then <codeEntityReference>T:Newtonsoft.Json.MetadataPropertyHandling</codeEntityReference> can be used to remove this restriction.
  </para>
- 
+ <para>
+   The value of the <codeInline>$type</codeInline> property can be customized and validated by creating your own 
+   <codeEntityReference>T:Newtonsoft.Json.Serialization.ISerializationBinder</codeEntityReference>.
+ </para>
+
 <table>
   <tableHeader>
     <row>
@@ -226,7 +239,7 @@ or a property's object properties or collection items using
 </content>
 </section>
 
-<section>
+<section address="TypeNameAssemblyFormat">
  <title>TypeNameAssemblyFormat</title>
  <content><para><codeEntityReference>T:System.Runtime.Serialization.Formatters.FormatterAssemblyStyle</codeEntityReference> controls how type names are written during serialization.</para>
  
@@ -251,14 +264,48 @@ or a property's object properties or collection items using
 </content>
 </section>
 
-<section>
- <title>Binder</title>
- <content><para>The <codeEntityReference>T:System.Runtime.Serialization.SerializationBinder</codeEntityReference> is used to resolve type names to a .NET type.</para>
- <para>Read more about the serialization binder here: <codeEntityReference>T:System.Runtime.Serialization.SerializationBinder</codeEntityReference></para>
+<section address="SerializationBinder">
+ <title>SerializationBinder</title>
+ <content><para>The <codeEntityReference>T:Newtonsoft.Json.Serialization.ISerializationBinder</codeEntityReference> is used to resolve .NET types to type names during serialization and type names to .NET types during deserialization.</para>
+ <para>
+ If TypeNameHandling is enabled then it is strongly recommended that a custom <codeEntityReference>T:Newtonsoft.Json.Serialization.ISerializationBinder</codeEntityReference> is used to validate incoming type names for security reasons.</para>
 </content>
 </section>
 
-<section>
+<section address="MetadataPropertyHandling">
+ <title>MetadataPropertyHandling</title>
+ <content><para><codeEntityReference>T:Newtonsoft.Json.MetadataPropertyHandling</codeEntityReference> controls how metadata properties like <codeInline>$type</codeInline> and <codeInline>$id</codeInline> are read during deserialization.</para>
+ <para>
+  For performance reasons by default the JsonSerializer assumes that any metadata properties are located at the beginning of a JSON object.
+  If you are unable to guarantee the order of properties in JSON you are deserializing then <codeInline>MetadataPropertyHandling.ReadAhead</codeInline> removes this
+  restriction at the cost of some performance.
+ </para>
+ 
+<table>
+  <tableHeader>
+    <row>
+      <entry><para>Member</para></entry>
+      <entry><para>Description</para></entry>
+    </row>
+  </tableHeader>
+  <row>
+    <entry><para><legacyBold>Default</legacyBold></para></entry>
+    <entry><para>By default Json.NET will only read metadata properties that are at the beginning of a JSON object.</para></entry>
+  </row>
+  <row>
+    <entry><para><legacyBold>ReadAhead</legacyBold></para></entry>
+    <entry><para>Json.NET will look for metadata properties located anywhere in a JSON object.</para></entry>
+  </row>
+  <row>
+    <entry><para><legacyBold>Ignore</legacyBold></para></entry>
+    <entry><para>Json.NET will ignore metadata properties.</para></entry>
+  </row>
+</table>
+
+</content>
+</section>
+
+<section address="ConstructorHandling">
  <title>ConstructorHandling</title>
  <content><para><codeEntityReference>T:Newtonsoft.Json.ConstructorHandling</codeEntityReference> controls how constructors are used when initializing objects during deserialization.</para>
  
@@ -285,7 +332,7 @@ or a property's object properties or collection items using
 </content>
 </section>
 
-<section>
+<section address="Converters">
  <title>Converters</title>
  <content><para>This is the collection of JsonConverters that will be used during serialization and deserialization.</para>
  <para>A <codeEntityReference>T:Newtonsoft.Json.JsonConverter</codeEntityReference> allows JSON to be manually written during serialization and read during deserialization.
@@ -303,21 +350,9 @@ or a property's object properties or collection items using
 
  <para>To create your own custom converter inherit from the JsonConverter class. Read more about the built-in JsonConverters below:</para>
 <list class="bullet">
-  <listItem><para><externalLink>
-<linkText>Serializing Dates in JSON</linkText>
-<linkUri>DatesInJSON.htm</linkUri>
-<linkTarget>_self</linkTarget>
-</externalLink></para></listItem>
-  <listItem><para><externalLink>
-<linkText>Converting between JSON and XML</linkText>
-<linkUri>ConvertingJSONandXML.htm</linkUri>
-<linkTarget>_self</linkTarget>
-</externalLink></para></listItem>
-  <listItem><para><externalLink>
-<linkText>CustomCreationConverter</linkText>
-<linkUri>CustomCreationConverter.htm</linkUri>
-<linkTarget>_self</linkTarget>
-</externalLink></para></listItem>
+  <listItem><para><link xlink:href="DatesInJSON" /></para></listItem>
+  <listItem><para><link xlink:href="ConvertingJSONandXML" /></para></listItem>
+  <listItem><para><link xlink:href="CustomCreationConverter" /></para></listItem>
   <listItem><para><codeEntityReference>T:Newtonsoft.Json.Converters.StringEnumConverter</codeEntityReference></para></listItem>
 </list>
 
@@ -325,61 +360,35 @@ or a property's object properties or collection items using
 </content>
 </section>
 
-<section>
+<section address="ContractResolver">
  <title>ContractResolver</title>
  <content><para>Internally for every .NET type the JsonSerializer will create a contract of how the type should be serialized and deserialized,
  based on type metadata and attributes applied to the class. Specifying a custom <codeEntityReference>T:Newtonsoft.Json.Serialization.IContractResolver</codeEntityReference>
  allows the creation of contracts to be customized.</para>
- <para>Read more about Contract Resolvers here: <externalLink>
-<linkText>Contract Resolvers</linkText>
-<linkUri>ContractResolver.htm</linkUri>
-<linkTarget>_self</linkTarget>
-</externalLink></para>
+ <para>Read more about Contract Resolvers here: <link xlink:href="ContractResolver" /></para>
 </content>
 </section>
 
-<section>
+<section address="TraceWriter">
  <title>TraceWriter</title>
  <content><para>The Json.NET serializer supports logging and debugging using the
       <codeEntityReference>T:Newtonsoft.Json.Serialization.ITraceWriter</codeEntityReference> interface.
       By assigning a trace writer you can debug what happens inside the Json.NET serializer when serializing and deserializing JSON.</para>
- <para>Read more about TraceWriters here: <externalLink>
-<linkText>Debugging with Serialization Tracing</linkText>
-<linkUri>SerializationTracing.htm</linkUri>
-<linkTarget>_self</linkTarget>
-</externalLink></para>
+ <para>Read more about TraceWriters here: <link xlink:href="SerializationTracing" /></para>
 </content>
 </section>
 
-<section>
+<section address="Error">
  <title>Error</title>
  <content><para>The <codeEntityReference>E:Newtonsoft.Json.JsonSerializer.Error</codeEntityReference> event can catch errors during serialization and either handle the event and continue with
  serialization or let the error bubble up and be thrown to the application.</para>
- <para>Read more about error handling here: <externalLink>
-<linkText>Serialization Error Handling</linkText>
-<linkUri>SerializationErrorHandling.htm</linkUri>
-<linkTarget>_self</linkTarget>
-</externalLink>
-</para>
+ <para>Read more about error handling here: <link xlink:href="SerializationErrorHandling" /></para>
 </content>
 </section>
-</sections>
     <relatedTopics>
-      <externalLink>
-        <linkText>Serialization Guide</linkText>
-        <linkUri>SerializationGuide.htm</linkUri>
-        <linkTarget>_self</linkTarget>
-      </externalLink>
-      <externalLink>
-        <linkText>Serialization Attributes</linkText>
-        <linkUri>SerializationAttributes.htm</linkUri>
-        <linkTarget>_self</linkTarget>
-      </externalLink>
-      <externalLink>
-        <linkText>Serializing Dates in JSON</linkText>
-        <linkUri>DatesInJSON.htm</linkUri>
-        <linkTarget>_self</linkTarget>
-      </externalLink>
+      <link xlink:href="SerializationGuide" />
+      <link xlink:href="SerializationAttributes" />
+      <link xlink:href="DatesInJSON" />
       
       <codeEntityReference>T:Newtonsoft.Json.JsonSerializer</codeEntityReference>
       <codeEntityReference>T:Newtonsoft.Json.JsonSerializerSettings</codeEntityReference>

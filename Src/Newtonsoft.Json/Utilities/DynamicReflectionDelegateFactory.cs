@@ -23,10 +23,10 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
-#if !(PORTABLE || NETFX_CORE || PORTABLE40)
+#if HAVE_REFLECTION_EMIT
 using System;
 using System.Collections.Generic;
-#if NET20
+#if !HAVE_LINQ
 using Newtonsoft.Json.Utilities.LinqBridge;
 #endif
 using System.Reflection;
@@ -38,7 +38,7 @@ namespace Newtonsoft.Json.Utilities
 {
     internal class DynamicReflectionDelegateFactory : ReflectionDelegateFactory
     {
-        public static DynamicReflectionDelegateFactory Instance = new DynamicReflectionDelegateFactory();
+        internal static DynamicReflectionDelegateFactory Instance { get; } = new DynamicReflectionDelegateFactory();
 
         private static DynamicMethod CreateDynamicMethod(string name, Type returnType, Type[] parameterTypes, Type owner)
         {
@@ -49,13 +49,13 @@ namespace Newtonsoft.Json.Utilities
             return dynamicMethod;
         }
 
-        public override ObjectConstructor<object> CreateParametrizedConstructor(MethodBase method)
+        public override ObjectConstructor<object> CreateParameterizedConstructor(MethodBase method)
         {
             DynamicMethod dynamicMethod = CreateDynamicMethod(method.ToString(), typeof(object), new[] { typeof(object[]) }, method.DeclaringType);
             ILGenerator generator = dynamicMethod.GetILGenerator();
 
             GenerateCreateMethodCallIL(method, generator, 0);
-
+            
             return (ObjectConstructor<object>)dynamicMethod.CreateDelegate(typeof(ObjectConstructor<object>));
         }
 
@@ -86,9 +86,12 @@ namespace Newtonsoft.Json.Utilities
             generator.MarkLabel(argsOk);
 
             if (!method.IsConstructor && !method.IsStatic)
+            {
                 generator.PushInstance(method.DeclaringType);
+            }
 
-            int localVariableCount = 0;
+            LocalBuilder localConvertible = generator.DeclareLocal(typeof(IConvertible));
+            LocalBuilder localObject = generator.DeclareLocal(typeof(object));
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -123,7 +126,7 @@ namespace Newtonsoft.Json.Utilities
                             generator.MarkLabel(skipSettingDefault);
                             generator.PushArrayInstance(argsIndex, i);
                             generator.UnboxIfNeeded(parameterType);
-                            generator.Emit(OpCodes.Stloc, localVariableCount);
+                            generator.Emit(OpCodes.Stloc_S, localVariable);
 
                             // parameter finished, we out!
                             generator.MarkLabel(finishedProcessingParameter);
@@ -131,17 +134,16 @@ namespace Newtonsoft.Json.Utilities
                         else
                         {
                             generator.UnboxIfNeeded(parameterType);
-                            generator.Emit(OpCodes.Stloc, localVariableCount);
+                            generator.Emit(OpCodes.Stloc_S, localVariable);
                         }
                     }
 
                     generator.Emit(OpCodes.Ldloca_S, localVariable);
-
-                    localVariableCount++;
                 }
                 else if (parameterType.IsValueType())
                 {
                     generator.PushArrayInstance(argsIndex, i);
+                    generator.Emit(OpCodes.Stloc_S, localObject);
 
                     // have to check that value type parameters aren't null
                     // otherwise they will error when unboxed
@@ -149,25 +151,62 @@ namespace Newtonsoft.Json.Utilities
                     Label finishedProcessingParameter = generator.DefineLabel();
 
                     // check if parameter is not null
+                    generator.Emit(OpCodes.Ldloc_S, localObject);
                     generator.Emit(OpCodes.Brtrue_S, skipSettingDefault);
 
                     // parameter has no value, initialize to default
                     LocalBuilder localVariable = generator.DeclareLocal(parameterType);
                     generator.Emit(OpCodes.Ldloca_S, localVariable);
                     generator.Emit(OpCodes.Initobj, parameterType);
-                    generator.Emit(OpCodes.Ldloc, localVariableCount);
+                    generator.Emit(OpCodes.Ldloc_S, localVariable);
                     generator.Emit(OpCodes.Br_S, finishedProcessingParameter);
 
-                    // parameter has value, get value from array again and unbox
+                    // argument has value, try to convert it to parameter type
                     generator.MarkLabel(skipSettingDefault);
-                    generator.PushArrayInstance(argsIndex, i);
-                    generator.UnboxIfNeeded(parameterType);
+                    
+                    if (parameterType.IsPrimitive())
+                    {
+                        // for primitive types we need to handle type widening (e.g. short -> int)
+                        MethodInfo toParameterTypeMethod = typeof(IConvertible)
+                            .GetMethod("To" + parameterType.Name, new[] { typeof(IFormatProvider) });
+                        
+                        if (toParameterTypeMethod != null)
+                        {
+                            Label skipConvertible = generator.DefineLabel();
 
+                            // check if argument type is an exact match for parameter type
+                            // in this case we may use cheap unboxing instead
+                            generator.Emit(OpCodes.Ldloc_S, localObject);
+                            generator.Emit(OpCodes.Isinst, parameterType);
+                            generator.Emit(OpCodes.Brtrue_S, skipConvertible);
+
+                            // types don't match, check if argument implements IConvertible
+                            generator.Emit(OpCodes.Ldloc_S, localObject);
+                            generator.Emit(OpCodes.Isinst, typeof(IConvertible));
+                            generator.Emit(OpCodes.Stloc_S, localConvertible);
+                            generator.Emit(OpCodes.Ldloc_S, localConvertible);
+                            generator.Emit(OpCodes.Brfalse_S, skipConvertible);
+
+                            // convert argument to parameter type
+                            generator.Emit(OpCodes.Ldloc_S, localConvertible);
+                            generator.Emit(OpCodes.Ldnull);
+                            generator.Emit(OpCodes.Callvirt, toParameterTypeMethod);
+                            generator.Emit(OpCodes.Br_S, finishedProcessingParameter);
+
+                            generator.MarkLabel(skipConvertible);
+                        }
+                    }
+
+                    // we got here because either argument type matches parameter (conversion will succeed),
+                    // or argument type doesn't match parameter, but we're out of options (conversion will fail)
+                    generator.Emit(OpCodes.Ldloc_S, localObject);
+
+                    generator.UnboxIfNeeded(parameterType);
+                    
                     // parameter finished, we out!
                     generator.MarkLabel(finishedProcessingParameter);
-                    localVariableCount++;
                 }
-                else 
+                else
                 {
                     generator.PushArrayInstance(argsIndex, i);
 
@@ -176,18 +215,26 @@ namespace Newtonsoft.Json.Utilities
             }
 
             if (method.IsConstructor)
+            {
                 generator.Emit(OpCodes.Newobj, (ConstructorInfo)method);
+            }
             else
+            {
                 generator.CallMethod((MethodInfo)method);
+            }
 
             Type returnType = method.IsConstructor
                 ? method.DeclaringType
                 : ((MethodInfo)method).ReturnType;
 
             if (returnType != typeof(void))
+            {
                 generator.BoxIfNeeded(returnType);
+            }
             else
+            {
                 generator.Emit(OpCodes.Ldnull);
+            }
 
             generator.Return();
         }
@@ -198,27 +245,33 @@ namespace Newtonsoft.Json.Utilities
             dynamicMethod.InitLocals = true;
             ILGenerator generator = dynamicMethod.GetILGenerator();
 
-            GenerateCreateDefaultConstructorIL(type, generator);
+            GenerateCreateDefaultConstructorIL(type, generator, typeof(T));
 
             return (Func<T>)dynamicMethod.CreateDelegate(typeof(Func<T>));
         }
 
-        private void GenerateCreateDefaultConstructorIL(Type type, ILGenerator generator)
+        private void GenerateCreateDefaultConstructorIL(Type type, ILGenerator generator, Type delegateType)
         {
             if (type.IsValueType())
             {
                 generator.DeclareLocal(type);
                 generator.Emit(OpCodes.Ldloc_0);
-                generator.Emit(OpCodes.Box, type);
+
+                // only need to box if the delegate isn't returning the value type
+                if (type != delegateType)
+                {
+                    generator.Emit(OpCodes.Box, type);
+                }
             }
             else
             {
                 ConstructorInfo constructorInfo =
-                    type.GetConstructor(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null,
-                        ReflectionUtils.EmptyTypes, null);
+                    type.GetConstructor(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, ReflectionUtils.EmptyTypes, null);
 
                 if (constructorInfo == null)
+                {
                     throw new ArgumentException("Could not get constructor for {0}.".FormatWith(CultureInfo.InvariantCulture, type));
+                }
 
                 generator.Emit(OpCodes.Newobj, constructorInfo);
             }
@@ -228,7 +281,7 @@ namespace Newtonsoft.Json.Utilities
 
         public override Func<T, object> CreateGet<T>(PropertyInfo propertyInfo)
         {
-            DynamicMethod dynamicMethod = CreateDynamicMethod("Get" + propertyInfo.Name, typeof(T), new[] { typeof(object) }, propertyInfo.DeclaringType);
+            DynamicMethod dynamicMethod = CreateDynamicMethod("Get" + propertyInfo.Name, typeof(object), new[] { typeof(T) }, propertyInfo.DeclaringType);
             ILGenerator generator = dynamicMethod.GetILGenerator();
 
             GenerateCreateGetPropertyIL(propertyInfo, generator);
@@ -240,10 +293,14 @@ namespace Newtonsoft.Json.Utilities
         {
             MethodInfo getMethod = propertyInfo.GetGetMethod(true);
             if (getMethod == null)
+            {
                 throw new ArgumentException("Property '{0}' does not have a getter.".FormatWith(CultureInfo.InvariantCulture, propertyInfo.Name));
+            }
 
             if (!getMethod.IsStatic)
+            {
                 generator.PushInstance(propertyInfo.DeclaringType);
+            }
 
             generator.CallMethod(getMethod);
             generator.BoxIfNeeded(propertyInfo.PropertyType);
@@ -252,6 +309,13 @@ namespace Newtonsoft.Json.Utilities
 
         public override Func<T, object> CreateGet<T>(FieldInfo fieldInfo)
         {
+            if (fieldInfo.IsLiteral)
+            {
+                object constantValue = fieldInfo.GetValue(null);
+                Func<T, object> getter = o => constantValue;
+                return getter;
+            }
+
             DynamicMethod dynamicMethod = CreateDynamicMethod("Get" + fieldInfo.Name, typeof(T), new[] { typeof(object) }, fieldInfo.DeclaringType);
             ILGenerator generator = dynamicMethod.GetILGenerator();
 
@@ -289,15 +353,21 @@ namespace Newtonsoft.Json.Utilities
         internal static void GenerateCreateSetFieldIL(FieldInfo fieldInfo, ILGenerator generator)
         {
             if (!fieldInfo.IsStatic)
+            {
                 generator.PushInstance(fieldInfo.DeclaringType);
+            }
 
             generator.Emit(OpCodes.Ldarg_1);
             generator.UnboxIfNeeded(fieldInfo.FieldType);
 
             if (!fieldInfo.IsStatic)
+            {
                 generator.Emit(OpCodes.Stfld, fieldInfo);
+            }
             else
+            {
                 generator.Emit(OpCodes.Stsfld, fieldInfo);
+            }
 
             generator.Return();
         }
@@ -316,7 +386,9 @@ namespace Newtonsoft.Json.Utilities
         {
             MethodInfo setMethod = propertyInfo.GetSetMethod(true);
             if (!setMethod.IsStatic)
+            {
                 generator.PushInstance(propertyInfo.DeclaringType);
+            }
 
             generator.Emit(OpCodes.Ldarg_1);
             generator.UnboxIfNeeded(propertyInfo.PropertyType);
@@ -325,4 +397,5 @@ namespace Newtonsoft.Json.Utilities
         }
     }
 }
+
 #endif

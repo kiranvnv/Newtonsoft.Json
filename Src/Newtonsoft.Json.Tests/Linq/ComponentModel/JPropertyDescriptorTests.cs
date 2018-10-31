@@ -23,8 +23,14 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
-#if !(NETFX_CORE || PORTABLE || PORTABLE40 || ASPNETCORE50)
+#if !(PORTABLE || PORTABLE40 || DNXCORE50) || NETSTANDARD2_0
+#if DNXCORE50
+using Xunit;
+using Test = Xunit.FactAttribute;
+using Assert = Newtonsoft.Json.Tests.XUnitAssert;
+#else
 using NUnit.Framework;
+#endif
 using Newtonsoft.Json.Linq;
 
 namespace Newtonsoft.Json.Tests.Linq.ComponentModel
@@ -45,6 +51,14 @@ namespace Newtonsoft.Json.Tests.Linq.ComponentModel
         }
 
         [Test]
+        public void GetValue_NullOwner_ReturnsNull()
+        {
+            JPropertyDescriptor prop1 = new JPropertyDescriptor("prop1");
+
+            Assert.AreEqual(null, prop1.GetValue(null));
+        }
+
+        [Test]
         public void SetValue()
         {
             JObject o = JObject.Parse("{prop1:'12345!'}");
@@ -54,6 +68,14 @@ namespace Newtonsoft.Json.Tests.Linq.ComponentModel
             propertyDescriptor1.SetValue(o, "54321!");
 
             Assert.AreEqual("54321!", (string)o["prop1"]);
+        }
+
+        [Test]
+        public void SetValue_NullOwner_NoError()
+        {
+            JPropertyDescriptor prop1 = new JPropertyDescriptor("prop1");
+
+            prop1.SetValue(null, "value!");
         }
 
         [Test]

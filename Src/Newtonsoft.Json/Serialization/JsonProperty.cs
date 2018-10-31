@@ -24,9 +24,10 @@
 #endregion
 
 using System;
+using System.Reflection;
 using Newtonsoft.Json.Utilities;
 
-#if NET20
+#if !HAVE_LINQ
 using Newtonsoft.Json.Utilities.LinqBridge;
 #endif
 
@@ -55,7 +56,7 @@ namespace Newtonsoft.Json.Serialization
         /// <value>The name of the property.</value>
         public string PropertyName
         {
-            get { return _propertyName; }
+            get => _propertyName;
             set
             {
                 _propertyName = value;
@@ -70,9 +71,9 @@ namespace Newtonsoft.Json.Serialization
         public Type DeclaringType { get; set; }
 
         /// <summary>
-        /// Gets or sets the order of serialization and deserialization of a member.
+        /// Gets or sets the order of serialization of a member.
         /// </summary>
-        /// <value>The numeric order of serialization or deserialization.</value>
+        /// <value>The numeric order of serialization.</value>
         public int? Order { get; set; }
 
         /// <summary>
@@ -88,12 +89,18 @@ namespace Newtonsoft.Json.Serialization
         public IValueProvider ValueProvider { get; set; }
 
         /// <summary>
+        /// Gets or sets the <see cref="IAttributeProvider"/> for this property.
+        /// </summary>
+        /// <value>The <see cref="IAttributeProvider"/> for this property.</value>
+        public IAttributeProvider AttributeProvider { get; set; }
+
+        /// <summary>
         /// Gets or sets the type of the property.
         /// </summary>
         /// <value>The type of the property.</value>
         public Type PropertyType
         {
-            get { return _propertyType; }
+            get => _propertyType;
             set
             {
                 if (_propertyType != value)
@@ -106,7 +113,7 @@ namespace Newtonsoft.Json.Serialization
 
         /// <summary>
         /// Gets or sets the <see cref="JsonConverter" /> for the property.
-        /// If set this converter takes presidence over the contract converter for the property type.
+        /// If set this converter takes precedence over the contract converter for the property type.
         /// </summary>
         /// <value>The converter.</value>
         public JsonConverter Converter { get; set; }
@@ -115,7 +122,12 @@ namespace Newtonsoft.Json.Serialization
         /// Gets or sets the member converter.
         /// </summary>
         /// <value>The member converter.</value>
-        public JsonConverter MemberConverter { get; set; }
+        [Obsolete("MemberConverter is obsolete. Use Converter instead.")]
+        public JsonConverter MemberConverter
+        {
+            get => Converter;
+            set => Converter = value;
+        }
 
         /// <summary>
         /// Gets or sets a value indicating whether this <see cref="JsonProperty"/> is ignored.
@@ -150,7 +162,9 @@ namespace Newtonsoft.Json.Serialization
             get
             {
                 if (!_hasExplicitDefaultValue)
+                {
                     return null;
+                }
 
                 return _defaultValue;
             }
@@ -164,7 +178,9 @@ namespace Newtonsoft.Json.Serialization
         internal object GetResolvedDefaultValue()
         {
             if (_propertyType == null)
+            {
                 return null;
+            }
 
             if (!_hasExplicitDefaultValue && !_hasGeneratedDefaultValue)
             {
@@ -181,8 +197,8 @@ namespace Newtonsoft.Json.Serialization
         /// <value>A value indicating whether this <see cref="JsonProperty"/> is required.</value>
         public Required Required
         {
-            get { return _required ?? Required.Default; }
-            set { _required = value; }
+            get => _required ?? Required.Default;
+            set => _required = value;
         }
 
         /// <summary>
@@ -224,10 +240,16 @@ namespace Newtonsoft.Json.Serialization
         public TypeNameHandling? TypeNameHandling { get; set; }
 
         /// <summary>
-        /// Gets or sets a predicate used to determine whether the property should be serialize.
+        /// Gets or sets a predicate used to determine whether the property should be serialized.
         /// </summary>
-        /// <value>A predicate used to determine whether the property should be serialize.</value>
+        /// <value>A predicate used to determine whether the property should be serialized.</value>
         public Predicate<object> ShouldSerialize { get; set; }
+
+        /// <summary>
+        /// Gets or sets a predicate used to determine whether the property should be deserialized.
+        /// </summary>
+        /// <value>A predicate used to determine whether the property should be deserialized.</value>
+        public Predicate<object> ShouldDeserialize { get; set; }
 
         /// <summary>
         /// Gets or sets a predicate used to determine whether the property should be serialized.
@@ -265,13 +287,13 @@ namespace Newtonsoft.Json.Serialization
         public bool? ItemIsReference { get; set; }
 
         /// <summary>
-        /// Gets or sets the the type name handling used when serializing the property's collection items.
+        /// Gets or sets the type name handling used when serializing the property's collection items.
         /// </summary>
         /// <value>The collection's items type name handling.</value>
         public TypeNameHandling? ItemTypeNameHandling { get; set; }
 
         /// <summary>
-        /// Gets or sets the the reference loop handling used when serializing the property's collection items.
+        /// Gets or sets the reference loop handling used when serializing the property's collection items.
         /// </summary>
         /// <value>The collection's items reference loop handling.</value>
         public ReferenceLoopHandling? ItemReferenceLoopHandling { get; set; }
@@ -279,9 +301,13 @@ namespace Newtonsoft.Json.Serialization
         internal void WritePropertyName(JsonWriter writer)
         {
             if (_skipPropertyNameEscape)
+            {
                 writer.WritePropertyName(PropertyName, false);
+            }
             else
+            {
                 writer.WritePropertyName(PropertyName);
+            }
         }
     }
 }

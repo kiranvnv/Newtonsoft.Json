@@ -1,4 +1,5 @@
 cls
-powershell -Command "& { [Console]::WindowWidth = 150; [Console]::WindowHeight = 50; Start-Transcript runbuild.txt; Import-Module ..\Tools\PSake\psake.psm1; Invoke-psake ..\Build\build.ps1 %*; Stop-Transcript; }"
+powershell -Command "& { Start-Transcript '%~dp0\Temp\runbuild.txt'; Import-Module '%~dp0\psake.psm1'; Invoke-psake '%~dp0..\Build\build.ps1' %*; Stop-Transcript; exit !($psake.build_success); }"
 
-pause
+ECHO %ERRORLEVEL%
+EXIT /B %ERRORLEVEL%

@@ -28,7 +28,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using Newtonsoft.Json.Utilities;
 using System.Collections;
-#if NET20
+#if !HAVE_LINQ
 using Newtonsoft.Json.Utilities.LinqBridge;
 #else
 using System.Linq;
@@ -38,7 +38,7 @@ using System.Linq;
 namespace Newtonsoft.Json.Serialization
 {
     /// <summary>
-    /// Contract details for a <see cref="Type"/> used by the <see cref="JsonSerializer"/>.
+    /// Contract details for a <see cref="System.Type"/> used by the <see cref="JsonSerializer"/>.
     /// </summary>
     public class JsonContainerContract : JsonContract
     {
@@ -48,7 +48,7 @@ namespace Newtonsoft.Json.Serialization
         // will be null for containers that don't have an item type (e.g. IList) or for complex objects
         internal JsonContract ItemContract
         {
-            get { return _itemContract; }
+            get => _itemContract;
             set
             {
                 _itemContract = value;
@@ -64,10 +64,7 @@ namespace Newtonsoft.Json.Serialization
         }
 
         // the final (i.e. can't be inherited from like a sealed class or valuetype) item contract
-        internal JsonContract FinalItemContract
-        {
-            get { return _finalItemContract; }
-        }
+        internal JsonContract FinalItemContract => _finalItemContract;
 
         /// <summary>
         /// Gets or sets the default collection items <see cref="JsonConverter" />.
@@ -105,8 +102,11 @@ namespace Newtonsoft.Json.Serialization
             if (jsonContainerAttribute != null)
             {
                 if (jsonContainerAttribute.ItemConverterType != null)
-                    ItemConverter = JsonTypeReflector.CreateJsonConverterInstance(jsonContainerAttribute.ItemConverterType, 
-                                                                                  jsonContainerAttribute.ItemConverterParameters);
+                {
+                    ItemConverter = JsonTypeReflector.CreateJsonConverterInstance(
+                        jsonContainerAttribute.ItemConverterType,
+                        jsonContainerAttribute.ItemConverterParameters);
+                }
 
                 ItemIsReference = jsonContainerAttribute._itemIsReference;
                 ItemReferenceLoopHandling = jsonContainerAttribute._itemReferenceLoopHandling;

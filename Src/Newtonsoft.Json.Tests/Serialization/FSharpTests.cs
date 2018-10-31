@@ -23,8 +23,14 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
-#if !(NET35 || NET20 || NETFX_CORE || ASPNETCORE50)
+#if !(NET40 || NET35 || NET20 || DNXCORE50) || NETSTANDARD1_3 || NETSTANDARD2_0
+#if DNXCORE50
+using Xunit;
+using Test = Xunit.FactAttribute;
+using Assert = Newtonsoft.Json.Tests.XUnitAssert;
+#else
 using NUnit.Framework;
+#endif
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -40,7 +46,7 @@ namespace Newtonsoft.Json.Tests.Serialization
         [Test]
         public void List()
         {
-            FSharpList<int> l = ListModule.OfSeq(new List<int> {1,2,3});
+            FSharpList<int> l = ListModule.OfSeq(new List<int> { 1, 2, 3 });
 
             string json = JsonConvert.SerializeObject(l, Formatting.Indented);
 
@@ -91,4 +97,5 @@ namespace Newtonsoft.Json.Tests.Serialization
         }
     }
 }
+
 #endif

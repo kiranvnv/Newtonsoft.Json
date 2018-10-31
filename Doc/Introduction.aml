@@ -22,16 +22,21 @@
         <para>LINQ to JSON for manually reading and writing JSON </para>
     </listItem>
    <listItem>
-        <para>High performance, faster than .NET's built-in JSON serializers</para>
+        <para>High performance: faster than .NET's built-in JSON serializers</para>
     </listItem>
    <listItem>
-        <para>Write indented, easy to read JSON</para>
+        <para>Write indented, easy-to-read JSON</para>
     </listItem>
    <listItem>
         <para>Convert JSON to and from XML</para>
     </listItem>
    <listItem>
-        <para>Supports .NET 2, .NET 3.5, .NET 4, .NET 4.5, Silverlight, Windows Phone and Windows 8 Store</para>
+        <para>Supports <externalLink>
+                <linkText>.NET Standard 2.0</linkText>
+                <linkUri>https://github.com/dotnet/standard/blob/master/docs/versions.md</linkUri>
+                <linkTarget>_blank</linkTarget>
+            </externalLink>,
+            .NET 2, .NET 3.5, .NET 4, .NET 4.5, Silverlight, Windows Phone and Windows 8 Store</para>
     </listItem>
 
 </list>
@@ -48,21 +53,9 @@ and write from your objects.</para>
  <content>
 
 <list class="bullet">
-  <listItem><para><externalLink>
-<linkText>Serializing and Deserializing JSON</linkText>
-<linkUri>SerializingJSON.htm</linkUri>
-<linkTarget>_self</linkTarget>
-</externalLink></para></listItem>
-  <listItem><para><externalLink>
-<linkText>LINQ to JSON</linkText>
-<linkUri>LINQtoJSON.htm</linkUri>
-<linkTarget>_self</linkTarget>
-</externalLink></para></listItem>
-  <listItem><para><externalLink>
-<linkText>Samples</linkText>
-<linkUri>Samples.htm</linkUri>
-<linkTarget>_self</linkTarget>
-</externalLink></para></listItem>
+  <listItem><para><link xlink:href="SerializingJSON" /></para></listItem>
+  <listItem><para><link xlink:href="LINQtoJSON" /></para></listItem>
+  <listItem><para><link xlink:href="Samples" /></para></listItem>
 </list>
  
  </content>
@@ -70,15 +63,15 @@ and write from your objects.</para>
 <section>
  <title>History</title>
  <content><para>Json.NET grew out of projects I was working on in late 2005 involving JavaScript,
-            AJAX and .NET. At the time there were no libraries for working with JavaScript in
-            .NET so I made my own.</para>
+            AJAX, and .NET. At the time there were no libraries for working with JavaScript in
+            .NET, so I made my own.</para>
  <para>Starting out as a couple of static methods for escaping JavaScript strings, Json.NET
             evolved as features were added. To add support for reading JSON a major refactor
-            was required and Json.NET will split into the three major classes it still uses
-            today, JsonReader, JsonWriter and JsonSerializer.</para>
+            was required, and Json.NET was split into the three major classes it still uses
+            today: JsonReader, JsonWriter and JsonSerializer.</para>
  <para>Json.NET was first released in June 2006. Since then Json.NET has been downloaded
-            hundreds of thousands of times by developers around the world. It is used in many major open
-            source projects including <externalLink>
+            hundreds of thousands of times by developers from around the world. It is used in many major open
+            source projects, including: <externalLink>
                 <linkText>Mono</linkText>
                 <linkUri>http://www.mono-project.com/</linkUri>
                 <linkTarget>_blank</linkTarget>
@@ -89,49 +82,24 @@ and write from your objects.</para>
                 <linkUri>http://ravendb.net/</linkUri>
                 <linkTarget>_blank</linkTarget>
             </externalLink>,
-            a JSON based documentat database; <externalLink>
+            a JSON based document database; <externalLink>
                 <linkText>ASP.NET SignalR</linkText>
                 <linkUri>http://signalr.net/</linkUri>
                 <linkTarget>_blank</linkTarget>
             </externalLink>,
             an async library for building real-time, multi-user interactive web applications; and <externalLink>
-                <linkText>ASP.NET Web API</linkText>
-                <linkUri>http://www.asp.net/web-api</linkUri>
+                <linkText>ASP.NET Core</linkText>
+                <linkUri>http://www.asp.net</linkUri>
                 <linkTarget>_blank</linkTarget>
             </externalLink>,
-            Microsoft's HTTP service framework.</para>
+            Microsoft's web app and service framework.</para>
 </content>
 </section>
 
-<section>
- <title>Donate</title>
- <content><para>Json.NET is a personal open source project. Started in 2006, I have put hundreds of hours adding, refining and tuning Json.NET with the goal to make it not just the best JSON serializer for .NET but the best serializer for any computer language. I need your
- help to achieve this.</para>
-
- <markup>
- <p>
-   <a href="http://www.pledgie.com/campaigns/18941" target="_blank"><img src="http://www.pledgie.com/campaigns/18941.png?skin_name=chrome" alt="Click here to lend your support to: Json.NET and make a donation at www.pledgie.com !" border="0" /></a>
- </p>
- </markup>
- </content>
-</section>
-
     <relatedTopics>
-      <externalLink>
-        <linkText>Serializing and Deserializing JSON</linkText>
-        <linkUri>SerializingJSON.htm</linkUri>
-        <linkTarget>_self</linkTarget>
-      </externalLink>
-      <externalLink>
-        <linkText>LINQ to JSON</linkText>
-        <linkUri>LINQtoJSON.htm</linkUri>
-        <linkTarget>_self</linkTarget>
-      </externalLink>
-      <externalLink>
-        <linkText>Samples</linkText>
-        <linkUri>Samples.htm</linkUri>
-        <linkTarget>_self</linkTarget>
-      </externalLink>
+       <link xlink:href="SerializingJSON" />
+       <link xlink:href="LINQtoJSON" />
+       <link xlink:href="Samples" />
     </relatedTopics>
 
   </developerConceptualDocument>

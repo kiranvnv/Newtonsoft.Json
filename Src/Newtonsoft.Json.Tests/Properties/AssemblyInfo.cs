@@ -31,25 +31,10 @@ using System.Security;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 
-#if PORTABLE
-[assembly: AssemblyTitle("Json.NET Tests Portable")]
-#elif NETFX_CORE
-[assembly: AssemblyTitle("Json.NET Tests WinRT")]
-#elif NET20
-[assembly: AssemblyTitle("Json.NET Tests .NET 2.0")]
-#elif NET35
-[assembly: AssemblyTitle("Json.NET Tests .NET 3.5")]
-#elif NET40
-[assembly: AssemblyTitle("Json.NET Tests .NET 4.0")]
-#else
-[assembly: AssemblyTitle("Json.NET Tests")]
+#if DNXCORE50
+[assembly: Xunit.CollectionBehavior(DisableTestParallelization = true)]
 #endif
 
-[assembly: AssemblyDescription("")]
-[assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Newtonsoft")]
-[assembly: AssemblyProduct("Json.NET Tests")]
-[assembly: AssemblyCopyright("Copyright © James Newton-King 2008")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
@@ -62,16 +47,3 @@ using System.Security;
 // The following GUID is for the ID of the typelib if this project is exposed to COM
 
 [assembly: Guid("0be3d72b-d2ef-409c-985c-d3ede89a25f1")]
-
-// Version information for an assembly consists of the following four values:
-//
-//      Major Version
-//      Minor Version 
-//      Build Number
-//      Revision
-//
-// You can specify all the values or you can default the Revision and Build Numbers 
-// by using the '*' as shown below:
-
-[assembly: AssemblyVersion("6.0.0.0")]
-[assembly: AssemblyFileVersion("6.0.6.17911")]

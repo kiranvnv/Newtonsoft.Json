@@ -28,16 +28,13 @@ using System.Collections.Generic;
 using System.Text;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Linq.JsonPath;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
 #else
 using NUnit.Framework;
+
 #endif
 
 namespace Newtonsoft.Json.Tests.Linq.JsonPath
@@ -56,7 +53,7 @@ namespace Newtonsoft.Json.Tests.Linq.JsonPath
                     new BooleanQueryExpression
                     {
                         Operator = QueryOperator.Exists,
-                        Path = new List<PathFilter>
+                        Left = new List<PathFilter>
                         {
                             new FieldFilter
                             {
@@ -67,7 +64,7 @@ namespace Newtonsoft.Json.Tests.Linq.JsonPath
                     new BooleanQueryExpression
                     {
                         Operator = QueryOperator.Exists,
-                        Path = new List<PathFilter>
+                        Left = new List<PathFilter>
                         {
                             new FieldFilter
                             {
@@ -80,29 +77,29 @@ namespace Newtonsoft.Json.Tests.Linq.JsonPath
 
             JObject o1 = new JObject
             {
-                {"Title","Title!"},
-                {"FirstName", "FirstName!"},
-                {"LastName", "LastName!"}
+                { "Title", "Title!" },
+                { "FirstName", "FirstName!" },
+                { "LastName", "LastName!" }
             };
 
-            Assert.IsTrue(compositeExpression.IsMatch(o1));
+            Assert.IsTrue(compositeExpression.IsMatch(o1, o1));
 
             JObject o2 = new JObject
             {
-                {"Title","Title!"},
-                {"FirstName", "FirstName!"}
+                { "Title", "Title!" },
+                { "FirstName", "FirstName!" }
             };
 
-            Assert.IsFalse(compositeExpression.IsMatch(o2));
+            Assert.IsFalse(compositeExpression.IsMatch(o2, o2));
 
             JObject o3 = new JObject
             {
-                {"Title","Title!"}
+                { "Title", "Title!" }
             };
 
-            Assert.IsFalse(compositeExpression.IsMatch(o3));
+            Assert.IsFalse(compositeExpression.IsMatch(o3, o3));
         }
-        
+
         [Test]
         public void OrExpressionTest()
         {
@@ -114,7 +111,7 @@ namespace Newtonsoft.Json.Tests.Linq.JsonPath
                     new BooleanQueryExpression
                     {
                         Operator = QueryOperator.Exists,
-                        Path = new List<PathFilter>
+                        Left = new List<PathFilter>
                         {
                             new FieldFilter
                             {
@@ -125,7 +122,7 @@ namespace Newtonsoft.Json.Tests.Linq.JsonPath
                     new BooleanQueryExpression
                     {
                         Operator = QueryOperator.Exists,
-                        Path = new List<PathFilter>
+                        Left = new List<PathFilter>
                         {
                             new FieldFilter
                             {
@@ -138,27 +135,91 @@ namespace Newtonsoft.Json.Tests.Linq.JsonPath
 
             JObject o1 = new JObject
             {
-                {"Title","Title!"},
-                {"FirstName", "FirstName!"},
-                {"LastName", "LastName!"}
+                { "Title", "Title!" },
+                { "FirstName", "FirstName!" },
+                { "LastName", "LastName!" }
             };
 
-            Assert.IsTrue(compositeExpression.IsMatch(o1));
+            Assert.IsTrue(compositeExpression.IsMatch(o1, o1));
 
             JObject o2 = new JObject
             {
-                {"Title","Title!"},
-                {"FirstName", "FirstName!"}
+                { "Title", "Title!" },
+                { "FirstName", "FirstName!" }
             };
 
-            Assert.IsTrue(compositeExpression.IsMatch(o2));
+            Assert.IsTrue(compositeExpression.IsMatch(o2, o2));
 
             JObject o3 = new JObject
             {
-                {"Title","Title!"}
+                { "Title", "Title!" }
             };
 
-            Assert.IsFalse(compositeExpression.IsMatch(o3));
+            Assert.IsFalse(compositeExpression.IsMatch(o3, o3));
+        }
+        
+        [Test]
+        public void BooleanExpressionTest_RegexEqualsOperator()
+        {
+            BooleanQueryExpression e1 = new BooleanQueryExpression
+            {
+                Operator = QueryOperator.RegexEquals,
+                Right = new JValue("/foo.*d/"),
+                Left = new List<PathFilter>
+                {
+                    new ArrayIndexFilter()
+                }
+            };
+
+            Assert.IsTrue(e1.IsMatch(null, new JArray("food")));
+            Assert.IsTrue(e1.IsMatch(null, new JArray("fooood and drink")));
+            Assert.IsFalse(e1.IsMatch(null, new JArray("FOOD")));
+            Assert.IsFalse(e1.IsMatch(null, new JArray("foo", "foog", "good")));
+
+            BooleanQueryExpression e2 = new BooleanQueryExpression
+            {
+                Operator = QueryOperator.RegexEquals,
+                Right = new JValue("/Foo.*d/i"),
+                Left = new List<PathFilter>
+                {
+                    new ArrayIndexFilter()
+                }
+            };
+
+            Assert.IsTrue(e2.IsMatch(null, new JArray("food")));
+            Assert.IsTrue(e2.IsMatch(null, new JArray("fooood and drink")));
+            Assert.IsTrue(e2.IsMatch(null, new JArray("FOOD")));
+            Assert.IsFalse(e2.IsMatch(null, new JArray("foo", "foog", "good")));
+        }
+
+        [Test]
+        public void BooleanExpressionTest_RegexEqualsOperator_CornerCase()
+        {
+            BooleanQueryExpression e1 = new BooleanQueryExpression
+            {
+                Operator = QueryOperator.RegexEquals,
+                Right = new JValue("/// comment/"),
+                Left = new List<PathFilter>
+                {
+                    new ArrayIndexFilter()
+                }
+            };
+
+            Assert.IsTrue(e1.IsMatch(null, new JArray("// comment")));
+            Assert.IsFalse(e1.IsMatch(null, new JArray("//comment", "/ comment")));
+
+            BooleanQueryExpression e2 = new BooleanQueryExpression
+            {
+                Operator = QueryOperator.RegexEquals,
+                Right = new JValue("/<tag>.*</tag>/i"),
+                Left = new List<PathFilter>
+                {
+                    new ArrayIndexFilter()
+                }
+            };
+
+            Assert.IsTrue(e2.IsMatch(null, new JArray("<Tag>Test</Tag>", "")));
+            Assert.IsFalse(e2.IsMatch(null, new JArray("<tag>Test<tag>")));
         }
 
         [Test]
@@ -167,32 +228,74 @@ namespace Newtonsoft.Json.Tests.Linq.JsonPath
             BooleanQueryExpression e1 = new BooleanQueryExpression
             {
                 Operator = QueryOperator.LessThan,
-                Value = new JValue(3),
-                Path = new List<PathFilter>
+                Right = new JValue(3),
+                Left = new List<PathFilter>
                 {
                     new ArrayIndexFilter()
                 }
             };
 
-            Assert.IsTrue(e1.IsMatch(new JArray(1, 2, 3, 4, 5)));
-            Assert.IsTrue(e1.IsMatch(new JArray(2, 3, 4, 5)));
-            Assert.IsFalse(e1.IsMatch(new JArray(3, 4, 5)));
-            Assert.IsFalse(e1.IsMatch(new JArray(4, 5)));
+            Assert.IsTrue(e1.IsMatch(null, new JArray(1, 2, 3, 4, 5)));
+            Assert.IsTrue(e1.IsMatch(null, new JArray(2, 3, 4, 5)));
+            Assert.IsFalse(e1.IsMatch(null, new JArray(3, 4, 5)));
+            Assert.IsFalse(e1.IsMatch(null, new JArray(4, 5)));
+            Assert.IsFalse(e1.IsMatch(null, new JArray("11", 5)));
 
             BooleanQueryExpression e2 = new BooleanQueryExpression
             {
                 Operator = QueryOperator.LessThanOrEquals,
-                Value = new JValue(3),
-                Path = new List<PathFilter>
+                Right = new JValue(3),
+                Left = new List<PathFilter>
                 {
                     new ArrayIndexFilter()
                 }
             };
 
-            Assert.IsTrue(e2.IsMatch(new JArray(1, 2, 3, 4, 5)));
-            Assert.IsTrue(e2.IsMatch(new JArray(2, 3, 4, 5)));
-            Assert.IsTrue(e2.IsMatch(new JArray(3, 4, 5)));
-            Assert.IsFalse(e2.IsMatch(new JArray(4, 5)));
+            Assert.IsTrue(e2.IsMatch(null, new JArray(1, 2, 3, 4, 5)));
+            Assert.IsTrue(e2.IsMatch(null, new JArray(2, 3, 4, 5)));
+            Assert.IsTrue(e2.IsMatch(null, new JArray(3, 4, 5)));
+            Assert.IsFalse(e2.IsMatch(null, new JArray(4, 5)));
+            Assert.IsFalse(e1.IsMatch(null, new JArray("11", 5)));
+        }
+
+        [Test]
+        public void BooleanExpressionTest_GreaterThanOperator()
+        {
+            BooleanQueryExpression e1 = new BooleanQueryExpression
+            {
+                Operator = QueryOperator.GreaterThan,
+                Right = new JValue(3),
+                Left = new List<PathFilter>
+                {
+                    new ArrayIndexFilter()
+                }
+            };
+
+            Assert.IsTrue(e1.IsMatch(null, new JArray("2", "26")));
+            Assert.IsTrue(e1.IsMatch(null, new JArray(2, 26)));
+            Assert.IsFalse(e1.IsMatch(null, new JArray(2, 3)));
+            Assert.IsFalse(e1.IsMatch(null, new JArray("2", "3")));
+        }
+
+        [Test]
+        public void BooleanExpressionTest_GreaterThanOrEqualsOperator()
+        {
+            BooleanQueryExpression e1 = new BooleanQueryExpression
+            {
+                Operator = QueryOperator.GreaterThanOrEquals,
+                Right = new JValue(3),
+                Left = new List<PathFilter>
+                {
+                    new ArrayIndexFilter()
+                }
+            };
+
+            Assert.IsTrue(e1.IsMatch(null, new JArray("2", "26")));
+            Assert.IsTrue(e1.IsMatch(null, new JArray(2, 26)));
+            Assert.IsTrue(e1.IsMatch(null, new JArray(2, 3)));
+            Assert.IsTrue(e1.IsMatch(null, new JArray("2", "3")));
+            Assert.IsFalse(e1.IsMatch(null, new JArray(2, 1)));
+            Assert.IsFalse(e1.IsMatch(null, new JArray("2", "1")));
         }
     }
 }

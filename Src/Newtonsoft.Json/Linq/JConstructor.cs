@@ -34,7 +34,7 @@ namespace Newtonsoft.Json.Linq
     /// <summary>
     /// Represents a JSON constructor.
     /// </summary>
-    public class JConstructor : JContainer
+    public partial class JConstructor : JContainer
     {
         private string _name;
         private readonly List<JToken> _values = new List<JToken>();
@@ -43,19 +43,24 @@ namespace Newtonsoft.Json.Linq
         /// Gets the container's children tokens.
         /// </summary>
         /// <value>The container's children tokens.</value>
-        protected override IList<JToken> ChildrenTokens
+        protected override IList<JToken> ChildrenTokens => _values;
+
+        internal override int IndexOfItem(JToken item)
         {
-            get { return _values; }
+            return _values.IndexOfReference(item);
         }
 
         internal override void MergeItem(object content, JsonMergeSettings settings)
         {
-            JConstructor c = content as JConstructor;
-            if (c == null)
+            if (!(content is JConstructor c))
+            {
                 return;
+            }
 
             if (c.Name != null)
+            {
                 Name = c.Name;
+            }
             MergeEnumerableContent(this, c, settings);
         }
 
@@ -65,18 +70,15 @@ namespace Newtonsoft.Json.Linq
         /// <value>The constructor name.</value>
         public string Name
         {
-            get { return _name; }
-            set { _name = value; }
+            get => _name;
+            set => _name = value;
         }
 
         /// <summary>
         /// Gets the node type for this <see cref="JToken"/>.
         /// </summary>
         /// <value>The type.</value>
-        public override JTokenType Type
-        {
-            get { return JTokenType.Constructor; }
-        }
+        public override JTokenType Type => JTokenType.Constructor;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="JConstructor"/> class.
@@ -122,15 +124,22 @@ namespace Newtonsoft.Json.Linq
         /// <param name="name">The constructor name.</param>
         public JConstructor(string name)
         {
-            ValidationUtils.ArgumentNotNullOrEmpty(name, "name");
+            if (name == null)
+            {
+                throw new ArgumentNullException(nameof(name));
+            }
+
+            if (name.Length == 0)
+            {
+                throw new ArgumentException("Constructor name cannot be empty.", nameof(name));
+            }
 
             _name = name;
         }
 
         internal override bool DeepEquals(JToken node)
         {
-            JConstructor c = node as JConstructor;
-            return (c != null && _name == c.Name && ContentsEqual(c));
+            return (node is JConstructor c && _name == c.Name && ContentsEqual(c));
         }
 
         internal override JToken CloneToken()
@@ -147,9 +156,10 @@ namespace Newtonsoft.Json.Linq
         {
             writer.WriteStartConstructor(_name);
 
-            foreach (JToken token in Children())
+            int count = _values.Count;
+            for (int i = 0; i < count; i++)
             {
-                token.WriteTo(writer, converters);
+                _values[i].WriteTo(writer, converters);
             }
 
             writer.WriteEndConstructor();
@@ -163,21 +173,25 @@ namespace Newtonsoft.Json.Linq
         {
             get
             {
-                ValidationUtils.ArgumentNotNull(key, "o");
+                ValidationUtils.ArgumentNotNull(key, nameof(key));
 
-                if (!(key is int))
+                if (!(key is int i))
+                {
                     throw new ArgumentException("Accessed JConstructor values with invalid key value: {0}. Argument position index expected.".FormatWith(CultureInfo.InvariantCulture, MiscellaneousUtils.ToString(key)));
+                }
 
-                return GetItem((int)key);
+                return GetItem(i);
             }
             set
             {
-                ValidationUtils.ArgumentNotNull(key, "o");
+                ValidationUtils.ArgumentNotNull(key, nameof(key));
 
-                if (!(key is int))
+                if (!(key is int i))
+                {
                     throw new ArgumentException("Set JConstructor values with invalid key value: {0}. Argument position index expected.".FormatWith(CultureInfo.InvariantCulture, MiscellaneousUtils.ToString(key)));
+                }
 
-                SetItem((int)key, value);
+                SetItem(i, value);
             }
         }
 
@@ -187,30 +201,43 @@ namespace Newtonsoft.Json.Linq
         }
 
         /// <summary>
-        /// Loads an <see cref="JConstructor"/> from a <see cref="JsonReader"/>. 
+        /// Loads a <see cref="JConstructor"/> from a <see cref="JsonReader"/>.
         /// </summary>
         /// <param name="reader">A <see cref="JsonReader"/> that will be read for the content of the <see cref="JConstructor"/>.</param>
         /// <returns>A <see cref="JConstructor"/> that contains the JSON that was read from the specified <see cref="JsonReader"/>.</returns>
         public new static JConstructor Load(JsonReader reader)
         {
+            return Load(reader, null);
+        }
+
+        /// <summary>
+        /// Loads a <see cref="JConstructor"/> from a <see cref="JsonReader"/>.
+        /// </summary>
+        /// <param name="reader">A <see cref="JsonReader"/> that will be read for the content of the <see cref="JConstructor"/>.</param>
+        /// <param name="settings">The <see cref="JsonLoadSettings"/> used to load the JSON.
+        /// If this is <c>null</c>, default load settings will be used.</param>
+        /// <returns>A <see cref="JConstructor"/> that contains the JSON that was read from the specified <see cref="JsonReader"/>.</returns>
+        public new static JConstructor Load(JsonReader reader, JsonLoadSettings settings)
+        {
             if (reader.TokenType == JsonToken.None)
             {
                 if (!reader.Read())
+                {
                     throw JsonReaderException.Create(reader, "Error reading JConstructor from JsonReader.");
+                }
             }
 
-            while (reader.TokenType == JsonToken.Comment)
-            {
-                reader.Read();
-            }
+            reader.MoveToContent();
 
             if (reader.TokenType != JsonToken.StartConstructor)
+            {
                 throw JsonReaderException.Create(reader, "Error reading JConstructor from JsonReader. Current JsonReader item is not a constructor: {0}".FormatWith(CultureInfo.InvariantCulture, reader.TokenType));
+            }
 
             JConstructor c = new JConstructor((string)reader.Value);
-            c.SetLineInfo(reader as IJsonLineInfo);
+            c.SetLineInfo(reader as IJsonLineInfo, settings);
 
-            c.ReadTokenFrom(reader);
+            c.ReadTokenFrom(reader, settings);
 
             return c;
         }

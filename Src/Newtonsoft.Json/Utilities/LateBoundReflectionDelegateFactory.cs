@@ -27,7 +27,7 @@ using System;
 using Newtonsoft.Json.Serialization;
 using System.Reflection;
 
-#if NET20
+#if !HAVE_LINQ
 using Newtonsoft.Json.Utilities.LinqBridge;
 #endif
 
@@ -37,39 +37,46 @@ namespace Newtonsoft.Json.Utilities
     {
         private static readonly LateBoundReflectionDelegateFactory _instance = new LateBoundReflectionDelegateFactory();
 
-        internal static ReflectionDelegateFactory Instance
-        {
-            get { return _instance; }
-        }
+        internal static ReflectionDelegateFactory Instance => _instance;
 
-        public override ObjectConstructor<object> CreateParametrizedConstructor(MethodBase method)
+        public override ObjectConstructor<object> CreateParameterizedConstructor(MethodBase method)
         {
-            ValidationUtils.ArgumentNotNull(method, "method");
+            ValidationUtils.ArgumentNotNull(method, nameof(method));
 
-            ConstructorInfo c = method as ConstructorInfo;
-            if (c != null)
-                return c.Invoke;
+            if (method is ConstructorInfo c)
+            {
+                // don't convert to method group to avoid medium trust issues
+                // https://github.com/JamesNK/Newtonsoft.Json/issues/476
+                return a =>
+                {
+                    object[] args = a;
+                    return c.Invoke(args);
+                };
+            }
 
             return a => method.Invoke(null, a);
         }
 
         public override MethodCall<T, object> CreateMethodCall<T>(MethodBase method)
         {
-            ValidationUtils.ArgumentNotNull(method, "method");
+            ValidationUtils.ArgumentNotNull(method, nameof(method));
 
-            ConstructorInfo c = method as ConstructorInfo;
-            if (c != null)
+            if (method is ConstructorInfo c)
+            {
                 return (o, a) => c.Invoke(a);
+            }
 
             return (o, a) => method.Invoke(o, a);
         }
 
         public override Func<T> CreateDefaultConstructor<T>(Type type)
         {
-            ValidationUtils.ArgumentNotNull(type, "type");
+            ValidationUtils.ArgumentNotNull(type, nameof(type));
 
             if (type.IsValueType())
+            {
                 return () => (T)Activator.CreateInstance(type);
+            }
 
             ConstructorInfo constructorInfo = ReflectionUtils.GetDefaultConstructor(type, true);
 
@@ -78,28 +85,28 @@ namespace Newtonsoft.Json.Utilities
 
         public override Func<T, object> CreateGet<T>(PropertyInfo propertyInfo)
         {
-            ValidationUtils.ArgumentNotNull(propertyInfo, "propertyInfo");
+            ValidationUtils.ArgumentNotNull(propertyInfo, nameof(propertyInfo));
 
             return o => propertyInfo.GetValue(o, null);
         }
 
         public override Func<T, object> CreateGet<T>(FieldInfo fieldInfo)
         {
-            ValidationUtils.ArgumentNotNull(fieldInfo, "fieldInfo");
+            ValidationUtils.ArgumentNotNull(fieldInfo, nameof(fieldInfo));
 
             return o => fieldInfo.GetValue(o);
         }
 
         public override Action<T, object> CreateSet<T>(FieldInfo fieldInfo)
         {
-            ValidationUtils.ArgumentNotNull(fieldInfo, "fieldInfo");
+            ValidationUtils.ArgumentNotNull(fieldInfo, nameof(fieldInfo));
 
             return (o, v) => fieldInfo.SetValue(o, v);
         }
 
         public override Action<T, object> CreateSet<T>(PropertyInfo propertyInfo)
         {
-            ValidationUtils.ArgumentNotNull(propertyInfo, "propertyInfo");
+            ValidationUtils.ArgumentNotNull(propertyInfo, nameof(propertyInfo));
 
             return (o, v) => propertyInfo.SetValue(o, v, null);
         }

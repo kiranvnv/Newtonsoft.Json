@@ -27,16 +27,12 @@ using System;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.Serialization;
-#if !(NET20 || NET35 || NETFX_CORE || PORTABLE)
+#if !(NET20 || NET35 || PORTABLE || DNXCORE50)
 using System.Runtime.Serialization.Json;
 #endif
 using System.Text;
 using Newtonsoft.Json.Tests.TestObjects;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
@@ -50,12 +46,55 @@ namespace Newtonsoft.Json.Tests.Serialization
     [TestFixture]
     public class DefaultValueHandlingTests : TestFixtureBase
     {
+        private class DefaultValueWithConstructorAndRename
+        {
+            public const string DefaultText = "...";
+
+            [DefaultValue(DefaultText)]
+            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
+            public readonly string Text;
+
+            public DefaultValueWithConstructorAndRename(string text = DefaultText)
+            {
+                Text = text;
+            }
+        }
+
+        [Test]
+        public void DefaultValueWithConstructorAndRenameTest()
+        {
+            DefaultValueWithConstructorAndRename myObject = JsonConvert.DeserializeObject<DefaultValueWithConstructorAndRename>("{}");
+            Assert.AreEqual(DefaultValueWithConstructorAndRename.DefaultText, myObject.Text);
+        }
+
+        private class DefaultValueWithConstructor
+        {
+            public const string DefaultText = "...";
+
+            [DefaultValue(DefaultText)]
+            [JsonProperty(PropertyName = "myText", DefaultValueHandling = DefaultValueHandling.Populate)]
+            public readonly string Text;
+
+            public DefaultValueWithConstructor([JsonProperty(PropertyName = "myText")]string text = DefaultText)
+            {
+                Text = text;
+            }
+        }
+
+        [Test]
+        public void DefaultValueWithConstructorTest()
+        {
+            DefaultValueWithConstructor myObject = JsonConvert.DeserializeObject<DefaultValueWithConstructor>("{}");
+            Assert.AreEqual(DefaultValueWithConstructor.DefaultText, myObject.Text);
+        }
+
         public class MyClass
         {
             [JsonIgnore]
             public MyEnum Status { get; set; }
 
             private string _data;
+
             public string Data
             {
                 get { return _data; }
@@ -82,7 +121,7 @@ namespace Newtonsoft.Json.Tests.Serialization
             string json = "{\"Data\":\"Other with some more text\"}";
 
             MyClass result = JsonConvert.DeserializeObject<MyClass>(json, new JsonSerializerSettings() { DefaultValueHandling = DefaultValueHandling.IgnoreAndPopulate });
-            
+
             Assert.AreEqual(MyEnum.Other, result.Status);
         }
 
@@ -277,7 +316,7 @@ namespace Newtonsoft.Json.Tests.Serialization
         {
             EmitDefaultValueClass c = new EmitDefaultValueClass();
 
-#if !(NET20 || NET35 || NETFX_CORE || PORTABLE)
+#if !(NET20 || NET35 || PORTABLE)
             DataContractJsonSerializer jsonSerializer = new DataContractJsonSerializer(typeof(EmitDefaultValueClass));
 
             MemoryStream ms = new MemoryStream();
@@ -368,6 +407,93 @@ namespace Newtonsoft.Json.Tests.Serialization
             Assert.AreEqual("fff", obj.Field1);
         }
 #endif
+
+        [Test]
+        public void PopulateTest()
+        {
+            var test = JsonConvert.DeserializeObject<PopulateWithNullJsonTest>("{\"IntValue\":null}");
+            Assert.AreEqual(0, test.IntValue);
+        }
+
+        public class PopulateWithNullJsonTest
+        {
+            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate, NullValueHandling = NullValueHandling.Ignore)]
+            [DefaultValue(6)]
+            public int IntValue { get; set; }
+        }
+
+        public sealed class FieldExportFormat
+        {
+            private string _format;
+            private ExportFormat? _exportFormat;
+
+            [JsonProperty]
+            public ExportFormat? ExportFormat
+            {
+                get { return _exportFormat; }
+                private set
+                {
+                    if (!value.HasValue)
+                    {
+                        throw new ArgumentNullException("ExportFormat");
+                    }
+                    _exportFormat = value;
+                    _format = null;
+                }
+            }
+
+            [JsonProperty]
+            public string Format
+            {
+                get { return _format; }
+                private set
+                {
+                    if (value == null)
+                    {
+                        throw new ArgumentNullException("Format");
+                    }
+                    _format = value;
+                    _exportFormat = null;
+                }
+            }
+
+            public FieldExportFormat(string format)
+            {
+                Format = format;
+            }
+
+            public FieldExportFormat(ExportFormat exportFormat)
+            {
+                ExportFormat = exportFormat;
+            }
+
+            [JsonConstructor]
+            private FieldExportFormat(string format, ExportFormat? exportFormat)
+            {
+                if (exportFormat.HasValue)
+                {
+                    ExportFormat = exportFormat;
+                }
+                else
+                {
+                    Format = format;
+                }
+            }
+        }
+
+        [Test]
+        public void DontSetPropertiesDefaultValueUsedInConstructor()
+        {
+            string json = @"{""ExportFormat"":0}";
+
+            FieldExportFormat o = JsonConvert.DeserializeObject<FieldExportFormat>(json, new JsonSerializerSettings
+            {
+                DefaultValueHandling = DefaultValueHandling.Populate
+            });
+
+            Assert.AreEqual(ExportFormat.Default, o.ExportFormat);
+            Assert.AreEqual(null, o.Format);
+        }
     }
 
 #if !NET20
@@ -514,4 +640,11 @@ namespace Newtonsoft.Json.Tests.Serialization
         public object Object { get; set; }
     }
 #endif
+
+    public enum ExportFormat
+    {
+        Default = 0,
+        Currency,
+        Integer
+    }
 }

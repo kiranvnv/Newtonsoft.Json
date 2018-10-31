@@ -13,11 +13,15 @@
       </para>
       <para>Anything that can be set on an object, collection, property, etc, using attributes or methods to control serialization
       can also be set using an IContractResolver.</para>
+      <autoOutline lead="none" excludeRelatedTopics="true" />
+<alert class="note">
+  <para>For performance you should create a contract resolver once and reuse instances when possible. Resolving contracts is slow and implementations of <codeEntityReference>T:Newtonsoft.Json.Serialization.IContractResolver</codeEntityReference> typically cache contracts.</para>
+</alert>
     </introduction>
     <!-- Add one or more top-level section elements.  These are collapsible.
          If using <autoOutline />, add an address attribute to identify it
          and specify a title so that it can be jumped to with a hyperlink. -->
-    <section>
+    <section address="DefaultContractResolver">
       <title>DefaultContractResolver</title>
       <content>
         <!-- Uncomment this to create a sub-section outline
@@ -25,10 +29,10 @@
         <para>The <codeEntityReference>T:Newtonsoft.Json.Serialization.DefaultContractResolver</codeEntityReference>
         is the default resolver used by the
         serializer. It provides many avenues of extensibility in the form of
-        virtual methods that can be overriden.</para>
+        virtual methods that can be overridden.</para>
       </content>
     </section>
-    <section>
+    <section address="CamelCasePropertyNamesContractResolver">
       <title>CamelCasePropertyNamesContractResolver</title>
       <content>
         <!-- Uncomment this to create a sub-section outline
@@ -44,7 +48,7 @@
 <code lang="cs" source="..\Src\Newtonsoft.Json.Tests\Documentation\SerializationTests.cs" region="ContractResolver" title="ContractResolver" />
       </content>
     </section>
-    <section>
+    <section address="CustomIContractResolverExamples">
       <title>Custom IContractResolver Examples</title>
       <content>
 <code lang="cs" source="..\Src\Newtonsoft.Json.Tests\Documentation\PerformanceTests.cs" region="JsonConverterContractResolver" title="Use JsonConverter with IContractResolver" />
@@ -54,11 +58,7 @@
 
 <code lang="cs" source="..\Src\Newtonsoft.Json.Tests\Documentation\ConditionalPropertiesTests.cs" region="ShouldSerializeContractResolver" title="Conditional properties with IContractResolver" />
 
-        <para>This example sets up <externalLink>
-        <linkText>conditional serialization for a property</linkText>
-        <linkUri>ConditionalProperties.htm</linkUri>
-        <linkTarget>_self</linkTarget>
-      </externalLink> using an IContractResolver. This is useful if you want to conditionally serialize a property but don't want to add additional methods to your type.</para>
+        <para>This example sets up <link xlink:href="ConditionalProperties">conditional serialization for a property</link> using an IContractResolver. This is useful if you want to conditionally serialize a property but don't want to add additional methods to your type.</para>
       </content>
     </section>
     <relatedTopics>

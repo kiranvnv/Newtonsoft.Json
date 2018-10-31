@@ -23,18 +23,15 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
+#pragma warning disable 618
 using System;
 using System.Collections.Generic;
-#if !(NET20 || NET35 || PORTABLE || ASPNETCORE50)
+#if !(NET20 || NET35 || PORTABLE) || NETSTANDARD1_3 || NETSTANDARD2_0
 using System.Numerics;
 #endif
 using System.Text;
 using System.Text.RegularExpressions;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
@@ -47,6 +44,7 @@ using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Utilities;
 using Newtonsoft.Json.Tests.TestObjects;
 using System.Globalization;
+using Newtonsoft.Json.Tests.TestObjects.GeoCoding;
 #if NET20
 using Newtonsoft.Json.Utilities.LinqBridge;
 #else
@@ -148,7 +146,6 @@ namespace Newtonsoft.Json.Tests.Bson
             writer.WriteEnd();
 
             string bson = BytesToHex(ms.ToArray());
-            Console.WriteLine(bson);
             Assert.AreEqual("1D-00-00-00-05-30-00-10-00-00-00-04-D7-EE-21-D8-5C-4B-C9-43-8A-C2-69-28-E5-79-B7-05-00", bson);
         }
 
@@ -290,15 +287,6 @@ namespace Newtonsoft.Json.Tests.Bson
             serializer.Serialize(writer1, s1);
 
             CollectionAssert.AreEquivalent(ms.ToArray(), ms1.ToArray());
-
-            string s = JsonConvert.SerializeObject(s1);
-            byte[] textData = Encoding.UTF8.GetBytes(s);
-
-            int l1 = textData.Length;
-            int l2 = ms.ToArray().Length;
-
-            Console.WriteLine(l1);
-            Console.WriteLine(l2);
         }
 
         [Test]
@@ -311,7 +299,9 @@ namespace Newtonsoft.Json.Tests.Bson
             for (int i = 0; i < 100; i++)
             {
                 if (i > 0)
+                {
                     largeStringBuilder.Append("-");
+                }
 
                 largeStringBuilder.Append(i.ToString(CultureInfo.InvariantCulture));
             }
@@ -493,7 +483,6 @@ namespace Newtonsoft.Json.Tests.Bson
             // 6D-61-6C-6C-00-02-31-00-07-00-00-00-4D-65-64-69-75-6D-
             // 00-02-32-00-06-00-00-00-4C-61-72-67-65-00-00-00
 
-
             ms.Seek(0, SeekOrigin.Begin);
 
             // deserialize product from BSON
@@ -502,7 +491,6 @@ namespace Newtonsoft.Json.Tests.Bson
 
             Console.WriteLine(deserializedProduct.Name);
             // Carlos' Spicy Wieners
-
 
             Assert.AreEqual("Carlos' Spicy Wieners", deserializedProduct.Name);
             Assert.AreEqual(9.95m, deserializedProduct.Price);
@@ -740,10 +728,9 @@ namespace Newtonsoft.Json.Tests.Bson
 
             JObject o = (JObject)JObject.ReadFrom(new BsonReader(new MemoryStream(ms.ToArray())));
 
-            Console.WriteLine(o.ToString());
-            //{
-            //  "Regex": "/(hi)/iux"
-            //}
+            StringAssert.AreEqual(@"{
+  ""Regex"": ""/(hi)/iux""
+}", o.ToString());
         }
 
         [Test]
@@ -756,10 +743,7 @@ namespace Newtonsoft.Json.Tests.Bson
 
             BsonWriter writer = new BsonWriter(ms);
 
-            ExceptionAssert.Throws<JsonWriterException>(() =>
-            {
-                serializer.Serialize(writer, b);
-            }, "Error writing Binary value. BSON must start with an Object or Array. Path ''.");
+            ExceptionAssert.Throws<JsonWriterException>(() => { serializer.Serialize(writer, b); }, "Error writing Binary value. BSON must start with an Object or Array. Path ''.");
         }
 
         public class GuidTestClass
@@ -814,7 +798,7 @@ namespace Newtonsoft.Json.Tests.Bson
             Assert.AreEqual(c.AGuid, c2.AGuid.ToString());
         }
 
-#if !(NET20 || NET35 || PORTABLE || ASPNETCORE50 || PORTABLE40)
+#if !(NET20 || NET35 || PORTABLE || PORTABLE40) || NETSTANDARD1_3 || NETSTANDARD2_0
         [Test]
         public void WriteBigInteger()
         {
@@ -849,6 +833,114 @@ namespace Newtonsoft.Json.Tests.Bson
 
             Assert.IsFalse(reader.Read());
         }
+
+        [Test]
+        public void WriteUri()
+        {
+            MemoryStream ms = new MemoryStream();
+            BsonWriter writer = new BsonWriter(ms);
+
+            writer.WriteStartObject();
+            writer.WritePropertyName("uri0");
+            writer.WriteValue(new Uri("http://example.net/"));
+            writer.WritePropertyName("uri1");
+            writer.WriteValue(default(Uri));
+            writer.WriteEndObject();
+            ms.Seek(0, SeekOrigin.Begin);
+
+            BsonReader reader = new BsonReader(ms);
+            Assert.IsTrue(reader.Read());
+            Assert.AreEqual(JsonToken.StartObject, reader.TokenType);
+            Assert.IsTrue(reader.Read());
+            Assert.AreEqual(JsonToken.PropertyName, reader.TokenType);
+            Assert.AreEqual("http://example.net/", reader.ReadAsString());
+            Assert.IsTrue(reader.Read());
+            Assert.AreEqual(JsonToken.PropertyName, reader.TokenType);
+            Assert.IsNull(reader.ReadAsString());
+        }
+
+        [Test]
+        public void WriteByteArray()
+        {
+            MemoryStream ms = new MemoryStream();
+            BsonWriter writer = new BsonWriter(ms);
+
+            writer.WriteStartObject();
+            writer.WritePropertyName("array0");
+            writer.WriteValue(new byte[] {0, 1, 2, 3, 4, 5, 6, 7});
+            writer.WritePropertyName("array1");
+            writer.WriteValue(default(byte[]));
+            writer.WriteEndObject();
+            ms.Seek(0, SeekOrigin.Begin);
+
+            BsonReader reader = new BsonReader(ms);
+            Assert.IsTrue(reader.Read());
+            Assert.AreEqual(JsonToken.StartObject, reader.TokenType);
+            Assert.IsTrue(reader.Read());
+            Assert.AreEqual(JsonToken.PropertyName, reader.TokenType);
+            Assert.AreEqual(new byte[] {0, 1, 2, 3, 4, 5, 6, 7}, reader.ReadAsBytes());
+            Assert.IsTrue(reader.Read());
+            Assert.AreEqual(JsonToken.PropertyName, reader.TokenType);
+            Assert.IsNull(reader.ReadAsBytes());
+        }
+
+        [Test]
+        public void WriteEndOnProperty()
+        {
+            MemoryStream ms = new MemoryStream();
+            BsonWriter writer = new BsonWriter(ms);
+
+            writer.WriteStartObject();
+            writer.WritePropertyName("Blah");
+            writer.WriteEnd();
+
+            Assert.AreEqual("0B-00-00-00-0A-42-6C-61-68-00-00", (BitConverter.ToString(ms.ToArray())));
+        }
+
+        [Test]
+        public void WriteEndOnProperty_Close()
+        {
+            MemoryStream ms = new MemoryStream();
+            BsonWriter writer = new BsonWriter(ms);
+
+            writer.WriteStartObject();
+            writer.WritePropertyName("Blah");
+            writer.Close();
+
+            Assert.AreEqual("0B-00-00-00-0A-42-6C-61-68-00-00", (BitConverter.ToString(ms.ToArray())));
+        }
+
+        [Test]
+        public void WriteEndOnProperty_Dispose()
+        {
+            MemoryStream ms = new MemoryStream();
+            using (BsonWriter writer = new BsonWriter(ms))
+            {
+                writer.WriteStartObject();
+                writer.WritePropertyName("Blah");
+            }
+
+            Assert.AreEqual("0B-00-00-00-0A-42-6C-61-68-00-00", (BitConverter.ToString(ms.ToArray())));
+        }
+
+        [Test]
+        public void AutoCompleteOnClose_False()
+        {
+            MemoryStream ms = new MemoryStream();
+            using (BsonWriter writer = new BsonWriter(ms))
+            {
+                writer.AutoCompleteOnClose = false;
+
+                writer.WriteStartObject();
+                writer.WritePropertyName("Blah");
+
+                writer.Flush();
+            }
+
+            // nothing is written because a BSON document needs to be completed before it can be written
+            Assert.AreEqual(string.Empty, (BitConverter.ToString(ms.ToArray())));
+        }
 #endif
     }
 }
+#pragma warning restore 618

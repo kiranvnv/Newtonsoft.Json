@@ -6,48 +6,41 @@ namespace Newtonsoft.Json.Linq.JsonPath
     {
         public string Name { get; set; }
 
-        public override IEnumerable<JToken> ExecuteFilter(IEnumerable<JToken> current, bool errorWhenNoMatch)
+        public override IEnumerable<JToken> ExecuteFilter(JToken root, IEnumerable<JToken> current, bool errorWhenNoMatch)
         {
-            foreach (JToken root in current)
+            foreach (JToken c in current)
             {
                 if (Name == null)
-                    yield return root;
+                {
+                    yield return c;
+                }
 
-                JToken value = root;
-                JToken container = root;
+                JToken value = c;
 
                 while (true)
                 {
-                    if (container != null && container.HasValues)
+                    JContainer container = value as JContainer;
+
+                    value = GetNextScanValue(c, container, value);
+                    if (value == null)
                     {
-                        value = container.First;
+                        break;
                     }
-                    else
+
+                    if (value is JProperty property)
                     {
-                        while (value != null && value != root && value == value.Parent.Last)
+                        if (property.Name == Name)
                         {
-                            value = value.Parent;
+                            yield return property.Value;
                         }
-
-                        if (value == null || value == root)
-                            break;
-
-                        value = value.Next;
-                    }
-
-                    JProperty e = value as JProperty;
-                    if (e != null)
-                    {
-                        if (e.Name == Name)
-                            yield return e.Value;
                     }
                     else
                     {
                         if (Name == null)
+                        {
                             yield return value;
+                        }
                     }
-
-                    container = value as JContainer;
                 }
             }
         }

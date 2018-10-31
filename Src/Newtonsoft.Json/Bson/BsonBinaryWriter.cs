@@ -54,7 +54,7 @@ namespace Newtonsoft.Json.Bson
 
         public void Close()
         {
-#if !(NETFX_CORE || PORTABLE40 || PORTABLE)
+#if HAVE_STREAM_READER_WRITER_CLOSE
             _writer.Close();
 #else
             _writer.Dispose();
@@ -124,10 +124,7 @@ namespace Newtonsoft.Json.Bson
                 }
                     break;
                 case BsonType.Boolean:
-                {
-                    BsonValue value = (BsonValue)t;
-                    _writer.Write((bool)value.Value);
-                }
+                    _writer.Write(t == BsonBoolean.True);
                     break;
                 case BsonType.Null:
                 case BsonType.Undefined:
@@ -138,17 +135,20 @@ namespace Newtonsoft.Json.Bson
 
                     long ticks = 0;
 
-                    if (value.Value is DateTime)
+                    if (value.Value is DateTime dateTime)
                     {
-                        DateTime dateTime = (DateTime)value.Value;
                         if (DateTimeKindHandling == DateTimeKind.Utc)
+                        {
                             dateTime = dateTime.ToUniversalTime();
+                        }
                         else if (DateTimeKindHandling == DateTimeKind.Local)
+                        {
                             dateTime = dateTime.ToLocalTime();
+                        }
 
                         ticks = DateTimeUtils.ConvertDateTimeToJavaScriptTicks(dateTime, false);
                     }
-#if !NET20
+#if HAVE_DATE_TIME_OFFSET
                     else
                     {
                         DateTimeOffset dateTimeOffset = (DateTimeOffset)value.Value;
@@ -186,14 +186,16 @@ namespace Newtonsoft.Json.Bson
                 }
                     break;
                 default:
-                    throw new ArgumentOutOfRangeException("t", "Unexpected token when writing BSON: {0}".FormatWith(CultureInfo.InvariantCulture, t.Type));
+                    throw new ArgumentOutOfRangeException(nameof(t), "Unexpected token when writing BSON: {0}".FormatWith(CultureInfo.InvariantCulture, t.Type));
             }
         }
 
         private void WriteString(string s, int byteCount, int? calculatedlengthPrefix)
         {
             if (calculatedlengthPrefix != null)
-                _writer.Write(calculatedlengthPrefix.Value);
+            {
+                _writer.Write(calculatedlengthPrefix.GetValueOrDefault());
+            }
 
             WriteUtf8Bytes(s, byteCount);
 
@@ -204,12 +206,13 @@ namespace Newtonsoft.Json.Bson
         {
             if (s != null)
             {
-                if (_largeByteBuffer == null)
-                {
-                    _largeByteBuffer = new byte[256];
-                }
                 if (byteCount <= 256)
                 {
+                    if (_largeByteBuffer == null)
+                    {
+                        _largeByteBuffer = new byte[256];
+                    }
+
                     Encoding.GetBytes(s, 0, s.Length, _largeByteBuffer, 0);
                     _writer.Write(_largeByteBuffer, 0, byteCount);
                 }
@@ -318,7 +321,7 @@ namespace Newtonsoft.Json.Bson
                     return value.CalculatedSize;
                 }
                 default:
-                    throw new ArgumentOutOfRangeException("t", "Unexpected token when writing BSON: {0}".FormatWith(CultureInfo.InvariantCulture, t.Type));
+                    throw new ArgumentOutOfRangeException(nameof(t), "Unexpected token when writing BSON: {0}".FormatWith(CultureInfo.InvariantCulture, t.Type));
             }
         }
     }

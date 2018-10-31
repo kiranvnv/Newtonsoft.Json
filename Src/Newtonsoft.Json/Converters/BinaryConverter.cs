@@ -23,12 +23,14 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
-#if !(NETFX_CORE || PORTABLE40 || PORTABLE)
+#if HAVE_LINQ || HAVE_ADO_NET
 using System;
-using System.Data.SqlTypes;
 using System.Globalization;
 using Newtonsoft.Json.Utilities;
 using System.Collections.Generic;
+#if HAVE_ADO_NET
+using System.Data.SqlTypes;
+#endif
 
 namespace Newtonsoft.Json.Converters
 {
@@ -37,10 +39,10 @@ namespace Newtonsoft.Json.Converters
     /// </summary>
     public class BinaryConverter : JsonConverter
     {
-#if !NET20
+#if HAVE_LINQ
         private const string BinaryTypeName = "System.Data.Linq.Binary";
         private const string BinaryToArrayName = "ToArray";
-        private ReflectionObject _reflectionObject;
+        private static ReflectionObject _reflectionObject;
 #endif
 
         /// <summary>
@@ -64,24 +66,30 @@ namespace Newtonsoft.Json.Converters
 
         private byte[] GetByteArray(object value)
         {
-#if !(NET20)
-            if (value.GetType().AssignableToTypeName(BinaryTypeName))
+#if HAVE_LINQ
+            if (value.GetType().FullName == BinaryTypeName)
             {
                 EnsureReflectionObject(value.GetType());
                 return (byte[])_reflectionObject.GetValue(value, BinaryToArrayName);
             }
 #endif
-            if (value is SqlBinary)
-                return ((SqlBinary)value).Value;
+#if HAVE_ADO_NET
+            if (value is SqlBinary binary)
+            {
+                return binary.Value;
+            }
+#endif
 
             throw new JsonSerializationException("Unexpected value type when writing binary: {0}".FormatWith(CultureInfo.InvariantCulture, value.GetType()));
         }
 
-#if !NET20
-        private void EnsureReflectionObject(Type t)
+#if HAVE_LINQ
+        private static void EnsureReflectionObject(Type t)
         {
             if (_reflectionObject == null)
+            {
                 _reflectionObject = ReflectionObject.Create(t, t.GetConstructor(new[] { typeof(byte[]) }), BinaryToArrayName);
+            }
         }
 #endif
 
@@ -95,14 +103,12 @@ namespace Newtonsoft.Json.Converters
         /// <returns>The object value.</returns>
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
         {
-            Type t = (ReflectionUtils.IsNullableType(objectType))
-                ? Nullable.GetUnderlyingType(objectType)
-                : objectType;
-
             if (reader.TokenType == JsonToken.Null)
             {
                 if (!ReflectionUtils.IsNullable(objectType))
+                {
                     throw JsonSerializationException.Create(reader, "Cannot convert null value to {0}.".FormatWith(CultureInfo.InvariantCulture, objectType));
+                }
 
                 return null;
             }
@@ -125,8 +131,12 @@ namespace Newtonsoft.Json.Converters
                 throw JsonSerializationException.Create(reader, "Unexpected token parsing binary. Expected String or StartArray, got {0}.".FormatWith(CultureInfo.InvariantCulture, reader.TokenType));
             }
 
-#if !NET20
-            if (t.AssignableToTypeName(BinaryTypeName))
+            Type t = (ReflectionUtils.IsNullableType(objectType))
+                ? Nullable.GetUnderlyingType(objectType)
+                : objectType;
+
+#if HAVE_LINQ
+            if (t.FullName == BinaryTypeName)
             {
                 EnsureReflectionObject(t);
 
@@ -134,8 +144,12 @@ namespace Newtonsoft.Json.Converters
             }
 #endif
 
+#if HAVE_ADO_NET
             if (t == typeof(SqlBinary))
+            {
                 return new SqlBinary(data);
+            }
+#endif
 
             throw JsonSerializationException.Create(reader, "Unexpected object type when writing binary: {0}".FormatWith(CultureInfo.InvariantCulture, objectType));
         }
@@ -173,16 +187,22 @@ namespace Newtonsoft.Json.Converters
         /// </returns>
         public override bool CanConvert(Type objectType)
         {
-#if !NET20
-            if (objectType.AssignableToTypeName(BinaryTypeName))
+#if HAVE_LINQ
+            if (objectType.FullName == BinaryTypeName)
+            {
                 return true;
+            }
 #endif
-
+#if HAVE_ADO_NET
             if (objectType == typeof(SqlBinary) || objectType == typeof(SqlBinary?))
+            {
                 return true;
+            }
+#endif
 
             return false;
         }
     }
 }
+
 #endif

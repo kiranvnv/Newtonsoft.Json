@@ -23,8 +23,9 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
+using System;
 using System.Collections.Generic;
-#if NET20
+#if !HAVE_LINQ
 using Newtonsoft.Json.Utilities.LinqBridge;
 #else
 using System.Linq;
@@ -33,6 +34,7 @@ using System.Linq;
 
 namespace Newtonsoft.Json.Schema
 {
+    [Obsolete("JSON Schema validation has been moved to its own package. See https://www.newtonsoft.com/jsonschema for more details.")]
     internal class JsonSchemaModelBuilder
     {
         private JsonSchemaNodeCollection _nodes = new JsonSchemaNodeCollection();
@@ -56,7 +58,9 @@ namespace Newtonsoft.Json.Schema
             if (existingNode != null)
             {
                 if (existingNode.Schemas.Contains(schema))
+                {
                     return existingNode;
+                }
 
                 newId = JsonSchemaNode.GetId(existingNode.Schemas.Union(new[] { schema }));
             }
@@ -66,7 +70,9 @@ namespace Newtonsoft.Json.Schema
             }
 
             if (_nodes.Contains(newId))
+            {
                 return _nodes[newId];
+            }
 
             JsonSchemaNode currentNode = (existingNode != null)
                 ? existingNode.Combine(schema)
@@ -87,10 +93,14 @@ namespace Newtonsoft.Json.Schema
             }
 
             if (schema.AdditionalItems != null)
+            {
                 AddAdditionalItems(currentNode, schema.AdditionalItems);
+            }
 
             if (schema.AdditionalProperties != null)
+            {
                 AddAdditionalProperties(currentNode, schema.AdditionalProperties);
+            }
 
             if (schema.Extends != null)
             {
@@ -116,8 +126,7 @@ namespace Newtonsoft.Json.Schema
 
         public void AddProperty(IDictionary<string, JsonSchemaNode> target, string propertyName, JsonSchema schema)
         {
-            JsonSchemaNode propertyNode;
-            target.TryGetValue(propertyName, out propertyNode);
+            target.TryGetValue(propertyName, out JsonSchemaNode propertyNode);
 
             target[propertyName] = AddSchema(propertyNode, schema);
         }
@@ -152,9 +161,10 @@ namespace Newtonsoft.Json.Schema
 
         private JsonSchemaModel BuildNodeModel(JsonSchemaNode node)
         {
-            JsonSchemaModel model;
-            if (_nodeModels.TryGetValue(node, out model))
+            if (_nodeModels.TryGetValue(node, out JsonSchemaModel model))
+            {
                 return model;
+            }
 
             model = JsonSchemaModel.Create(node.Schemas);
             _nodeModels[node] = model;
@@ -162,28 +172,38 @@ namespace Newtonsoft.Json.Schema
             foreach (KeyValuePair<string, JsonSchemaNode> property in node.Properties)
             {
                 if (model.Properties == null)
+                {
                     model.Properties = new Dictionary<string, JsonSchemaModel>();
+                }
 
                 model.Properties[property.Key] = BuildNodeModel(property.Value);
             }
             foreach (KeyValuePair<string, JsonSchemaNode> property in node.PatternProperties)
             {
                 if (model.PatternProperties == null)
+                {
                     model.PatternProperties = new Dictionary<string, JsonSchemaModel>();
+                }
 
                 model.PatternProperties[property.Key] = BuildNodeModel(property.Value);
             }
             foreach (JsonSchemaNode t in node.Items)
             {
                 if (model.Items == null)
+                {
                     model.Items = new List<JsonSchemaModel>();
+                }
 
                 model.Items.Add(BuildNodeModel(t));
             }
             if (node.AdditionalProperties != null)
+            {
                 model.AdditionalProperties = BuildNodeModel(node.AdditionalProperties);
+            }
             if (node.AdditionalItems != null)
+            {
                 model.AdditionalItems = BuildNodeModel(node.AdditionalItems);
+            }
 
             return model;
         }

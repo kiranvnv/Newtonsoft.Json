@@ -23,14 +23,10 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
-#if !(NETFX_CORE || PORTABLE || ASPNETCORE50 || PORTABLE40)
+#if !(PORTABLE || DNXCORE50 || PORTABLE40) || NETSTANDARD2_0
 using System;
 using Newtonsoft.Json.Converters;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
@@ -40,6 +36,7 @@ using NUnit.Framework;
 using Newtonsoft.Json.Serialization;
 using Newtonsoft.Json.Tests.TestObjects;
 using System.Data;
+using System.IO;
 
 namespace Newtonsoft.Json.Tests.Converters
 {
@@ -48,7 +45,11 @@ namespace Newtonsoft.Json.Tests.Converters
         [Test]
         public void DeserializeInvalidDataTable()
         {
-            ExceptionAssert.Throws<JsonException>(() => JsonConvert.DeserializeObject<DataSet>("{\"pending_count\":23,\"completed_count\":45}"), "Unexpected JSON token when reading DataTable. Expected StartArray, got Integer. Path 'pending_count', line 1, position 19.");
+            var ex = ExceptionAssert.Throws<JsonSerializationException>(() => JsonConvert.DeserializeObject<DataSet>("{\"pending_count\":23,\"completed_count\":45}"), "Unexpected JSON token when reading DataTable. Expected StartArray, got Integer. Path 'pending_count', line 1, position 19.");
+
+            Assert.AreEqual(1, ex.LineNumber);
+            Assert.AreEqual(19, ex.LinePosition);
+            Assert.AreEqual("pending_count", ex.Path);
         }
 
         [Test]
@@ -104,6 +105,65 @@ namespace Newtonsoft.Json.Tests.Converters
             Assert.AreEqual(typeof(string), dt.Columns[1].DataType);
 
             Assert.AreEqual(2, dt.Rows.Count);
+        }
+
+        public class DataSetTestClass
+        {
+            public DataSet Set { get; set; }
+        }
+
+        [Test]
+        public void WriteJsonNull()
+        {
+            StringWriter sw = new StringWriter();
+            JsonTextWriter jsonWriter = new JsonTextWriter(sw);
+
+            DataSetConverter converter = new DataSetConverter();
+            converter.WriteJson(jsonWriter, null, null);
+
+            StringAssert.AreEqual(@"null", sw.ToString());
+        }
+
+        [Test]
+        public void SerializeNull()
+        {
+            DataSetTestClass c1 = new DataSetTestClass
+            {
+                Set = null
+            };
+
+            string json = JsonConvert.SerializeObject(c1, Formatting.Indented);
+
+            StringAssert.AreEqual(@"{
+  ""Set"": null
+}", json);
+
+            DataSetTestClass c2 = JsonConvert.DeserializeObject<DataSetTestClass>(json);
+
+            Assert.AreEqual(null, c2.Set);
+        }
+
+        [Test]
+        public void SerializeNullRoot()
+        {
+            string json = JsonConvert.SerializeObject(null, typeof(DataSet), new JsonSerializerSettings
+            {
+                Formatting = Formatting.Indented
+            });
+
+            StringAssert.AreEqual(@"null", json);
+        }
+
+        [Test]
+        public void DeserializeNullTable()
+        {
+            string json = @"{
+  ""TableName"": null
+}";
+
+            DataSet ds = JsonConvert.DeserializeObject<DataSet>(json);
+
+            Assert.AreEqual(true, ds.Tables.Contains("TableName"));
         }
 
         [Test]
@@ -461,6 +521,85 @@ namespace Newtonsoft.Json.Tests.Converters
             var ds = JsonConvert.DeserializeObject<CustomerDataSet>(json);
 
             Assert.AreEqual("234", ds.Customers[0].CustomerID);
+        }
+
+        [Test]
+        public void ContractResolverInsideConverter()
+        {
+            var test = new MultipleDataTablesJsonTest
+            {
+                TableWrapper1 = new DataTableWrapper { DataTableProperty = CreateDataTable(3, "Table1Col") },
+                TableWrapper2 = new DataTableWrapper { DataTableProperty = CreateDataTable(3, "Table2Col") }
+            };
+
+            string json = JsonConvert.SerializeObject(test, Formatting.Indented, new LowercaseDataTableConverter());
+
+            StringAssert.AreEqual(@"{
+  ""TableWrapper1"": {
+    ""DataTableProperty"": [
+      {
+        ""table1col1"": ""1"",
+        ""table1col2"": ""2"",
+        ""table1col3"": ""3""
+      }
+    ],
+    ""StringProperty"": null,
+    ""IntProperty"": 0
+  },
+  ""TableWrapper2"": {
+    ""DataTableProperty"": [
+      {
+        ""table2col1"": ""1"",
+        ""table2col2"": ""2"",
+        ""table2col3"": ""3""
+      }
+    ],
+    ""StringProperty"": null,
+    ""IntProperty"": 0
+  }
+}", json);
+        }
+
+        private static DataTable CreateDataTable(int cols, string colNamePrefix)
+        {
+            var table = new DataTable();
+            for (int i = 1; i <= cols; i++)
+            {
+                table.Columns.Add(new DataColumn() { ColumnName = colNamePrefix + i, DefaultValue = i });
+            }
+            table.Rows.Add(table.NewRow());
+            return table;
+        }
+
+        public class DataTableWrapper
+        {
+            public DataTable DataTableProperty { get; set; }
+            public String StringProperty { get; set; }
+            public Int32 IntProperty { get; set; }
+        }
+
+        public class MultipleDataTablesJsonTest
+        {
+            public DataTableWrapper TableWrapper1 { get; set; }
+            public DataTableWrapper TableWrapper2 { get; set; }
+        }
+
+        public class LowercaseDataTableConverter : DataTableConverter
+        {
+            public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+            {
+                var dataTableSerializer = new JsonSerializer { ContractResolver = new LowercaseContractResolver() };
+
+                base.WriteJson(writer, value, dataTableSerializer);
+            }
+        }
+
+        public class LowercaseContractResolver : DefaultContractResolver
+        {
+            protected override string ResolvePropertyName(string propertyName)
+            {
+                return propertyName.ToLower();
+            }
         }
     }
 }

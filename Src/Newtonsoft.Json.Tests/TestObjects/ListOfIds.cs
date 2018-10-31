@@ -26,6 +26,7 @@
 using System;
 using System.Collections.Generic;
 using Newtonsoft.Json.Utilities;
+using System.Reflection;
 
 namespace Newtonsoft.Json.Tests.TestObjects
 {
@@ -65,7 +66,11 @@ namespace Newtonsoft.Json.Tests.TestObjects
 
         public override bool CanConvert(Type objectType)
         {
+#if DNXCORE50 && !NETSTANDARD2_0
+            return Newtonsoft.Json.Utilities.TypeExtensions.IsAssignableFrom(typeof(IList<T>), objectType);
+#else
             return typeof(IList<T>).IsAssignableFrom(objectType);
+#endif
         }
     }
 }

@@ -25,7 +25,7 @@
 
 using System;
 using System.Collections.Generic;
-#if NET20
+#if !HAVE_LINQ
 using Newtonsoft.Json.Utilities.LinqBridge;
 #else
 using System.Linq;
@@ -38,8 +38,8 @@ namespace Newtonsoft.Json.Linq
     /// <summary>
     /// Represents a collection of <see cref="JToken"/> objects.
     /// </summary>
-    /// <typeparam name="T">The type of token</typeparam>
-    public struct JEnumerable<T> : IJEnumerable<T>, IEquatable<JEnumerable<T>> where T : JToken
+    /// <typeparam name="T">The type of token.</typeparam>
+    public readonly struct JEnumerable<T> : IJEnumerable<T>, IEquatable<JEnumerable<T>> where T : JToken
     {
         /// <summary>
         /// An empty collection of <see cref="JToken"/> objects.
@@ -54,38 +54,29 @@ namespace Newtonsoft.Json.Linq
         /// <param name="enumerable">The enumerable.</param>
         public JEnumerable(IEnumerable<T> enumerable)
         {
-            ValidationUtils.ArgumentNotNull(enumerable, "enumerable");
+            ValidationUtils.ArgumentNotNull(enumerable, nameof(enumerable));
 
             _enumerable = enumerable;
         }
 
         /// <summary>
-        /// Returns an enumerator that iterates through the collection.
+        /// Returns an enumerator that can be used to iterate through the collection.
         /// </summary>
         /// <returns>
-        /// A <see cref="T:System.Collections.Generic.IEnumerator`1"/> that can be used to iterate through the collection.
+        /// A <see cref="IEnumerator{T}"/> that can be used to iterate through the collection.
         /// </returns>
         public IEnumerator<T> GetEnumerator()
         {
-            if (_enumerable == null)
-                return Empty.GetEnumerator();
-
-            return _enumerable.GetEnumerator();
+            return (_enumerable ?? Empty).GetEnumerator();
         }
 
-        /// <summary>
-        /// Returns an enumerator that iterates through a collection.
-        /// </summary>
-        /// <returns>
-        /// An <see cref="T:System.Collections.IEnumerator"/> object that can be used to iterate through the collection.
-        /// </returns>
         IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
         }
 
         /// <summary>
-        /// Gets the <see cref="IJEnumerable{JToken}"/> with the specified key.
+        /// Gets the <see cref="IJEnumerable{T}"/> of <see cref="JToken"/> with the specified key.
         /// </summary>
         /// <value></value>
         public IJEnumerable<JToken> this[object key]
@@ -93,7 +84,9 @@ namespace Newtonsoft.Json.Linq
             get
             {
                 if (_enumerable == null)
+                {
                     return JEnumerable<JToken>.Empty;
+                }
 
                 return new JEnumerable<JToken>(_enumerable.Values<T, JToken>(key));
             }
@@ -112,16 +105,18 @@ namespace Newtonsoft.Json.Linq
         }
 
         /// <summary>
-        /// Determines whether the specified <see cref="System.Object"/> is equal to this instance.
+        /// Determines whether the specified <see cref="Object"/> is equal to this instance.
         /// </summary>
-        /// <param name="obj">The <see cref="System.Object"/> to compare with this instance.</param>
+        /// <param name="obj">The <see cref="Object"/> to compare with this instance.</param>
         /// <returns>
-        /// 	<c>true</c> if the specified <see cref="System.Object"/> is equal to this instance; otherwise, <c>false</c>.
+        /// 	<c>true</c> if the specified <see cref="Object"/> is equal to this instance; otherwise, <c>false</c>.
         /// </returns>
         public override bool Equals(object obj)
         {
-            if (obj is JEnumerable<T>)
-                return Equals((JEnumerable<T>)obj);
+            if (obj is JEnumerable<T> enumerable)
+            {
+                return Equals(enumerable);
+            }
 
             return false;
         }
@@ -135,7 +130,9 @@ namespace Newtonsoft.Json.Linq
         public override int GetHashCode()
         {
             if (_enumerable == null)
+            {
                 return 0;
+            }
 
             return _enumerable.GetHashCode();
         }

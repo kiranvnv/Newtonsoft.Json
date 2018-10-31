@@ -23,7 +23,7 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
-#if !(NET35 || NET20 || PORTABLE || ASPNETCORE50)
+#if !(NET40 || NET35 || NET20 || PORTABLE || DNXCORE50) || NETSTANDARD1_3 || NETSTANDARD2_0
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -36,11 +36,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
@@ -54,19 +50,6 @@ using System.Globalization;
 
 namespace Newtonsoft.Json.Tests.Documentation
 {
-    public class HttpClient
-    {
-        public Task<string> GetStringAsync(string requestUri)
-        {
-            return null;
-        }
-
-        public Task<Stream> GetStreamAsync(string requestUri)
-        {
-            return null;
-        }
-    }
-
     #region JsonConverterAttribute
     [JsonConverter(typeof(PersonConverter))]
     public class Person
@@ -92,7 +75,9 @@ namespace Newtonsoft.Json.Tests.Documentation
 
             // this will only be called once and then cached
             if (objectType == typeof(DateTime) || objectType == typeof(DateTimeOffset))
+            {
                 contract.Converter = new JavaScriptDateTimeConverter();
+            }
 
             return contract;
         }
@@ -107,7 +92,14 @@ namespace Newtonsoft.Json.Tests.Documentation
 
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
         {
-            return null;
+            JObject o = (JObject)JToken.ReadFrom(reader);
+
+            Person p = new Person
+            {
+                Name = (string)o["Name"]
+            };
+
+            return p;
         }
 
         public override bool CanConvert(Type objectType)
@@ -119,6 +111,42 @@ namespace Newtonsoft.Json.Tests.Documentation
     [TestFixture]
     public class PerformanceTests : TestFixtureBase
     {
+        private static class AppSettings
+        {
+            public static readonly IContractResolver SnakeCaseContractResolver = new DefaultContractResolver();
+        }
+
+        [Test]
+        public void ReuseContractResolverTest()
+        {
+            Person person = new Person();
+
+            #region ReuseContractResolver
+            // BAD - a new contract resolver is created each time, forcing slow reflection to be used
+            string json1 = JsonConvert.SerializeObject(person, new JsonSerializerSettings
+            {
+                Formatting = Formatting.Indented,
+                ContractResolver = new DefaultContractResolver
+                {
+                    NamingStrategy = new SnakeCaseNamingStrategy()
+                }
+            });
+
+            // GOOD - reuse the contract resolver from a shared location
+            string json2 = JsonConvert.SerializeObject(person, new JsonSerializerSettings
+            {
+                Formatting = Formatting.Indented,
+                ContractResolver = AppSettings.SnakeCaseContractResolver
+            });
+
+            // GOOD - an internal contract resolver is used
+            string json3 = JsonConvert.SerializeObject(person, new JsonSerializerSettings
+            {
+                Formatting = Formatting.Indented
+            });
+            #endregion
+        }
+
         [Test]
         public void ConverterContractResolverTest()
         {
@@ -130,6 +158,20 @@ namespace Newtonsoft.Json.Tests.Documentation
             Console.WriteLine(json);
         }
 
+        public class HttpClient
+        {
+            public Task<Stream> GetStreamAsync(string url)
+            {
+                return Task.FromResult<Stream>(new MemoryStream());
+            }
+
+            public Task<string> GetStringAsync(string url)
+            {
+                return Task.FromResult("{}");
+            }
+        }
+
+        [Test]
         public void DeserializeString()
         {
             #region DeserializeString
@@ -143,6 +185,7 @@ namespace Newtonsoft.Json.Tests.Documentation
             #endregion
         }
 
+        [Test]
         public void DeserializeStream()
         {
             #region DeserializeStream

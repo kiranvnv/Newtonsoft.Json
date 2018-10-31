@@ -26,14 +26,13 @@
 using Newtonsoft.Json.Serialization;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Reflection;
-using System.Resources;
 using System.Globalization;
-#if NET20
+#if !HAVE_LINQ
 using Newtonsoft.Json.Utilities.LinqBridge;
 #else
 using System.Linq;
+
 #endif
 
 namespace Newtonsoft.Json.Utilities
@@ -47,12 +46,13 @@ namespace Newtonsoft.Json.Utilities
 
     internal class ReflectionObject
     {
-        public ObjectConstructor<object> Creator { get; private set; }
-        public IDictionary<string, ReflectionMember> Members { get; private set; }
+        public ObjectConstructor<object> Creator { get; }
+        public IDictionary<string, ReflectionMember> Members { get; }
 
-        public ReflectionObject()
+        private ReflectionObject(ObjectConstructor<object> creator)
         {
             Members = new Dictionary<string, ReflectionMember>();
+            Creator = creator;
         }
 
         public object GetValue(object target, string member)
@@ -79,13 +79,12 @@ namespace Newtonsoft.Json.Utilities
 
         public static ReflectionObject Create(Type t, MethodBase creator, params string[] memberNames)
         {
-            ReflectionObject d = new ReflectionObject();
-
             ReflectionDelegateFactory delegateFactory = JsonTypeReflector.ReflectionDelegateFactory;
 
+            ObjectConstructor<object> creatorConstructor = null;
             if (creator != null)
             {
-                d.Creator = delegateFactory.CreateParametrizedConstructor(creator);
+                creatorConstructor = delegateFactory.CreateParameterizedConstructor(creator);
             }
             else
             {
@@ -93,15 +92,19 @@ namespace Newtonsoft.Json.Utilities
                 {
                     Func<object> ctor = delegateFactory.CreateDefaultConstructor<object>(t);
 
-                    d.Creator = args => ctor();
+                    creatorConstructor = args => ctor();
                 }
             }
+
+            ReflectionObject d = new ReflectionObject(creatorConstructor);
 
             foreach (string memberName in memberNames)
             {
                 MemberInfo[] members = t.GetMember(memberName, BindingFlags.Instance | BindingFlags.Public);
                 if (members.Length != 1)
+                {
                     throw new ArgumentException("Expected a single member with the name '{0}'.".FormatWith(CultureInfo.InvariantCulture, memberName));
+                }
 
                 MemberInfo member = members.Single();
 
@@ -112,10 +115,14 @@ namespace Newtonsoft.Json.Utilities
                     case MemberTypes.Field:
                     case MemberTypes.Property:
                         if (ReflectionUtils.CanReadMemberValue(member, false))
+                        {
                             reflectionMember.Getter = delegateFactory.CreateGet<object>(member);
+                        }
 
                         if (ReflectionUtils.CanSetMemberValue(member, false, false))
+                        {
                             reflectionMember.Setter = delegateFactory.CreateSet<object>(member);
+                        }
                         break;
                     case MemberTypes.Method:
                         MethodInfo method = (MethodInfo)member;
@@ -139,10 +146,14 @@ namespace Newtonsoft.Json.Utilities
                 }
 
                 if (ReflectionUtils.CanReadMemberValue(member, false))
+                {
                     reflectionMember.Getter = delegateFactory.CreateGet<object>(member);
+                }
 
                 if (ReflectionUtils.CanSetMemberValue(member, false, false))
+                {
                     reflectionMember.Setter = delegateFactory.CreateSet<object>(member);
+                }
 
                 reflectionMember.MemberType = ReflectionUtils.GetMemberUnderlyingType(member);
 

@@ -1,4 +1,4 @@
-﻿#if !(PORTABLE40 || PORTABLE || NETFX_CORE)
+﻿#if HAVE_TRACE_WRITER
 using System;
 using System.Diagnostics;
 using DiagnosticsTrace = System.Diagnostics.Trace;
@@ -12,8 +12,8 @@ namespace Newtonsoft.Json.Serialization
     {
         /// <summary>
         /// Gets the <see cref="TraceLevel"/> that will be used to filter the trace messages passed to the writer.
-        /// For example a filter level of <code>Info</code> will exclude <code>Verbose</code> messages and include <code>Info</code>,
-        /// <code>Warning</code> and <code>Error</code> messages.
+        /// For example a filter level of <see cref="TraceLevel.Info"/> will exclude <see cref="TraceLevel.Verbose"/> messages and include <see cref="TraceLevel.Info"/>,
+        /// <see cref="TraceLevel.Warning"/> and <see cref="TraceLevel.Error"/> messages.
         /// </summary>
         /// <value>
         /// The <see cref="TraceLevel"/> that will be used to filter the trace messages passed to the writer.
@@ -33,7 +33,7 @@ namespace Newtonsoft.Json.Serialization
                 case TraceLevel.Verbose:
                     return TraceEventType.Verbose;
                 default:
-                    throw new ArgumentOutOfRangeException("level");
+                    throw new ArgumentOutOfRangeException(nameof(level));
             }
         }
 
@@ -46,7 +46,9 @@ namespace Newtonsoft.Json.Serialization
         public void Trace(TraceLevel level, string message, Exception ex)
         {
             if (level == TraceLevel.Off)
+            {
                 return;
+            }
 
             TraceEventCache eventCache = new TraceEventCache();
             TraceEventType traceEventType = GetTraceEventType(level);
@@ -66,7 +68,9 @@ namespace Newtonsoft.Json.Serialization
                 }
 
                 if (DiagnosticsTrace.AutoFlush)
+                {
                     listener.Flush();
+                }
             }
         }
     }

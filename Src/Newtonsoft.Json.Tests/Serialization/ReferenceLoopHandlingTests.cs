@@ -24,12 +24,10 @@
 #endregion
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+using System.Runtime.CompilerServices;
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
@@ -153,7 +151,8 @@ namespace Newtonsoft.Json.Tests.Serialization
 }", json);
         }
 
-#if !(PORTABLE || ASPNETCORE50 || NETFX_CORE || PORTABLE40)
+#if !(PORTABLE || DNXCORE50 || PORTABLE40) || NETSTANDARD1_3 || NETSTANDARD2_0
+        [Serializable]
         public class MainClass : ISerializable
         {
             public ChildClass Child { get; set; }
@@ -164,6 +163,7 @@ namespace Newtonsoft.Json.Tests.Serialization
             }
         }
 
+        [Serializable]
         public class ChildClass : ISerializable
         {
             public string Name { get; set; }
@@ -268,6 +268,79 @@ namespace Newtonsoft.Json.Tests.Serialization
             Assert.AreEqual(@"{""child"":{""name"":""child""},""name"":""parent""}", c);
         }
 #endif
+
+        [Test]
+        public void EqualityComparer()
+        {
+            AccountWithEquals account = new AccountWithEquals
+            {
+                Name = "main"
+            };
+            AccountWithEquals manager = new AccountWithEquals
+            {
+                Name = "main"
+            };
+            account.Manager = manager;
+
+            ExceptionAssert.Throws<JsonSerializationException>(
+                () => JsonConvert.SerializeObject(account),
+                "Self referencing loop detected for property 'Manager' with type 'Newtonsoft.Json.Tests.Serialization.AccountWithEquals'. Path ''.");
+
+            string json = JsonConvert.SerializeObject(account, new JsonSerializerSettings
+            {
+                EqualityComparer = new ReferenceEqualsEqualityComparer(),
+                Formatting = Formatting.Indented
+            });
+
+            StringAssert.AreEqual(@"{
+  ""Name"": ""main"",
+  ""Manager"": {
+    ""Name"": ""main"",
+    ""Manager"": null
+  }
+}", json);
+        }
+    }
+
+    public class ReferenceEqualsEqualityComparer : IEqualityComparer
+    {
+        bool IEqualityComparer.Equals(object x, object y)
+        {
+            return ReferenceEquals(x, y);
+        }
+
+        int IEqualityComparer.GetHashCode(object obj)
+        {
+            // put objects in a bucket based on their reference
+            return RuntimeHelpers.GetHashCode(obj);
+        }
+    }
+
+    public class AccountWithEquals
+    {
+        public string Name { get; set; }
+        public AccountWithEquals Manager { get; set; }
+
+        public override bool Equals(object obj)
+        {
+            AccountWithEquals a = obj as AccountWithEquals;
+            if (a == null)
+            {
+                return false;
+            }
+
+            return Name == a.Name;
+        }
+
+        public override int GetHashCode()
+        {
+            if (Name == null)
+            {
+                return 0;
+            }
+
+            return Name.GetHashCode();
+        }
     }
 
     public class PropertyItemReferenceLoopHandling
@@ -283,7 +356,9 @@ namespace Newtonsoft.Json.Tests.Serialization
             get
             {
                 if (_accessCount >= 3)
+                {
                     return null;
+                }
 
                 _accessCount++;
                 return new List<PropertyItemReferenceLoopHandling>(_data);

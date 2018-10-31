@@ -3,8 +3,9 @@
   <developerConceptualDocument xmlns="http://ddue.schemas.microsoft.com/authoring/2003/5" xmlns:xlink="http://www.w3.org/1999/xlink">
     <introduction>
       <para>Json.NET offers many features not found in the JavaScriptSerializer and DataContractSerializer that come with .NET.</para>
+      <autoOutline lead="none" excludeRelatedTopics="true" />
     </introduction>
-    <section>
+    <section address="FeatureComparison">
       <title>Feature Comparison</title>
       <content>
 <table>
@@ -29,7 +30,7 @@
     <entry><para><markup><img src="../cross.png" /></markup></para></entry>
   </row>
   <row>
-    <entry><para>Supports JSON Schema</para></entry>
+    <entry><para>Supports JSONPath</para></entry>
     <entry><para><markup><img src="../tick.png" /></markup></para></entry>
     <entry><para><markup><img src="../cross.png" /></markup></para></entry>
     <entry><para><markup><img src="../cross.png" /></markup></para></entry>
@@ -53,6 +54,12 @@
     <entry><para><markup><img src="../tick.png" /></markup></para></entry>
   </row>
   <row>
+    <entry><para>Supports .NET 4.5</para></entry>
+    <entry><para><markup><img src="../tick.png" /></markup></para></entry>
+    <entry><para><markup><img src="../tick.png" /></markup></para></entry>
+    <entry><para><markup><img src="../tick.png" /></markup></para></entry>
+  </row>
+  <row>
     <entry><para>Supports Silverlight</para></entry>
     <entry><para><markup><img src="../tick.png" /></markup></para></entry>
     <entry><para><markup><img src="../tick.png" /></markup></para></entry>
@@ -65,7 +72,13 @@
     <entry><para><markup><img src="../cross.png" /></markup></para></entry>
   </row>
   <row>
-    <entry><para>Supports WinRT</para></entry>
+    <entry><para>Supports Windows Store</para></entry>
+    <entry><para><markup><img src="../tick.png" /></markup></para></entry>
+    <entry><para><markup><img src="../tick.png" /></markup></para></entry>
+    <entry><para><markup><img src="../cross.png" /></markup></para></entry>
+  </row>
+  <row>
+    <entry><para>Supports Xamarin</para></entry>
     <entry><para><markup><img src="../tick.png" /></markup></para></entry>
     <entry><para><markup><img src="../tick.png" /></markup></para></entry>
     <entry><para><markup><img src="../cross.png" /></markup></para></entry>
@@ -419,7 +432,7 @@
     <entry><para><markup><img src="../cross.png" /></markup></para></entry>
   </row>
   <row>
-    <entry><para>Serailizes Entity Framework</para></entry>
+    <entry><para>Serializes Entity Framework</para></entry>
     <entry><para><markup><img src="../tick.png" /></markup></para></entry>
     <entry><para><markup><img src="../cross.png" /></markup></para></entry>
     <entry><para><markup><img src="../cross.png" /></markup></para></entry>
@@ -436,10 +449,46 @@
     <entry><para><markup><img src="../cross.png" /></markup></para></entry>
     <entry><para><markup><img src="../cross.png" /></markup></para></entry>
   </row>
-</table>  
+  <row>
+    <entry><para>Diagnostic tracing</para></entry>
+    <entry><para><markup><img src="../tick.png" /></markup></para></entry>
+    <entry><para><markup><img src="../tick.png" /></markup></para></entry>
+    <entry><para><markup><img src="../cross.png" /></markup></para></entry>
+  </row>
+  <row>
+    <entry><para>Serializes read-only and immutable collections</para></entry>
+    <entry><para><markup><img src="../tick.png" /></markup></para></entry>
+    <entry><para><markup><img src="../cross.png" /></markup></para></entry>
+    <entry><para><markup><img src="../cross.png" /></markup></para></entry>
+  </row>
+  <row>
+    <entry><para>Supports serialization extension data</para></entry>
+    <entry><para><markup><img src="../tick.png" /></markup></para></entry>
+    <entry><para><markup><img src="../tick.png" /></markup></para></entry>
+    <entry><para><markup><img src="../cross.png" /></markup></para></entry>
+  </row>
+  <row>
+    <entry><para>Serializes F# discriminated unions</para></entry>
+    <entry><para><markup><img src="../tick.png" /></markup></para></entry>
+    <entry><para><markup><img src="../cross.png" /></markup></para></entry>
+    <entry><para><markup><img src="../cross.png" /></markup></para></entry>
+  </row>
+  <row>
+    <entry><para>Serializes F# collections</para></entry>
+    <entry><para><markup><img src="../tick.png" /></markup></para></entry>
+    <entry><para><markup><img src="../cross.png" /></markup></para></entry>
+    <entry><para><markup><img src="../cross.png" /></markup></para></entry>
+  </row>
+  <row>
+    <entry><para>Supports merging JSON</para></entry>
+    <entry><para><markup><img src="../tick.png" /></markup></para></entry>
+    <entry><para><markup><img src="../cross.png" /></markup></para></entry>
+    <entry><para><markup><img src="../cross.png" /></markup></para></entry>
+  </row>
+</table>
       </content>
     </section>
-    <section>
+    <section address="Benchmarks">
       <title>Benchmarks</title>
       <content>
         

@@ -27,16 +27,13 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
-#if !(NET20 || NET35 || PORTABLE || ASPNETCORE50)
+#if !(NET20 || NET35 || PORTABLE)
 using System.Numerics;
 #endif
 using Newtonsoft.Json.Serialization;
 using Newtonsoft.Json.Tests.TestObjects;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+using Newtonsoft.Json.Tests.TestObjects.Organization;
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
@@ -46,7 +43,7 @@ using NUnit.Framework;
 using Newtonsoft.Json.Linq;
 using System.IO;
 using System.Collections;
-#if !(NETFX_CORE || ASPNETCORE50)
+#if !(DNXCORE50)
 using System.Web.UI;
 #endif
 #if NET20
@@ -61,7 +58,7 @@ namespace Newtonsoft.Json.Tests.Linq
     [TestFixture]
     public class JObjectTests : TestFixtureBase
     {
-#if !(NET35 || NET20 || PORTABLE40)
+#if !(NET35 || NET20 || PORTABLE40) || NETSTANDARD2_0
         [Test]
         public void EmbedJValueStringInNewJObject()
         {
@@ -81,6 +78,33 @@ namespace Newtonsoft.Json.Tests.Linq
 #endif
 
         [Test]
+        public void ReadWithSupportMultipleContent()
+        {
+            string json = @"{ 'name': 'Admin' }{ 'name': 'Publisher' }";
+
+            IList<JObject> roles = new List<JObject>();
+
+            JsonTextReader reader = new JsonTextReader(new StringReader(json));
+            reader.SupportMultipleContent = true;
+
+            while (true)
+            {
+                JObject role = (JObject)JToken.ReadFrom(reader);
+
+                roles.Add(role);
+
+                if (!reader.Read())
+                {
+                    break;
+                }
+            }
+
+            Assert.AreEqual(2, roles.Count);
+            Assert.AreEqual("Admin", (string)roles[0]["name"]);
+            Assert.AreEqual("Publisher", (string)roles[1]["name"]);
+        }
+
+        [Test]
         public void JObjectWithComments()
         {
             string json = @"{ /*comment2*/
@@ -96,7 +120,7 @@ namespace Newtonsoft.Json.Tests.Linq
 
             JToken o = JToken.Parse(json);
 
-            Assert.AreEqual("Apple", (string) o["Name"]);
+            Assert.AreEqual("Apple", (string)o["Name"]);
         }
 
         [Test]
@@ -267,6 +291,27 @@ namespace Newtonsoft.Json.Tests.Linq
 
             contains = ((ICollection<KeyValuePair<string, JToken>>)o).Contains(default(KeyValuePair<string, JToken>));
             Assert.AreEqual(false, contains);
+        }
+
+        [Test]
+        public void Contains()
+        {
+            JObject o = new JObject();
+            o.Add("PropertyNameValue", new JValue(1));
+            Assert.AreEqual(1, o.Children().Count());
+
+            bool contains = o.ContainsKey("PropertyNameValue");
+            Assert.AreEqual(true, contains);
+
+            contains = o.ContainsKey("does not exist");
+            Assert.AreEqual(false, contains);
+
+            ExceptionAssert.Throws<ArgumentNullException>(() =>
+            {
+                contains = o.ContainsKey(null);
+                Assert.AreEqual(false, contains);
+            }, @"Value cannot be null.
+Parameter name: propertyName");
         }
 
         [Test]
@@ -474,7 +519,7 @@ Parameter name: arrayIndex");
             ExceptionAssert.Throws<JsonReaderException>(() => { JObject.Parse(@"{
     ""name"": ""James"",
     ]!#$THIS IS: BAD JSON![{}}}}]
-  }"); }, "Invalid property identifier character: ]. Path 'name', line 3, position 5.");
+  }"); }, "Invalid property identifier character: ]. Path 'name', line 3, position 4.");
         }
 
         [Test]
@@ -570,8 +615,8 @@ Parameter name: arrayIndex");
             string smallest = (string)sizes[0];
             // Small
 
-            Console.WriteLine(name);
-            Console.WriteLine(smallest);
+            Assert.AreEqual("Apple", name);
+            Assert.AreEqual("Small", smallest);
         }
 
         [Test]
@@ -602,12 +647,6 @@ Parameter name: arrayIndex");
                     ErrorMessage = (string)json["short"]["error"]["msg"]
                 }
             };
-
-            Console.WriteLine(shortie.Original);
-            // http://www.foo.com/
-
-            Console.WriteLine(shortie.Error.ErrorMessage);
-            // No action taken
 
             Assert.AreEqual("http://www.foo.com/", shortie.Original);
             Assert.AreEqual("krehqk", shortie.Short);
@@ -641,15 +680,13 @@ Parameter name: arrayIndex");
             moss["Department"] = new JValue("IT");
             moss["JobTitle"] = new JValue("Support");
 
-            Console.WriteLine(moss.ToString());
-            //{
-            //  "FirstName": "Maurice",
-            //  "LastName": "Moss",
-            //  "BirthDate": "\/Date(252241200000+1300)\/",
-            //  "Department": "IT",
-            //  "JobTitle": "Support"
-            //}
-
+            StringAssert.AreEqual(@"{
+  ""FirstName"": ""Maurice"",
+  ""LastName"": ""Moss"",
+  ""BirthDate"": ""1977-12-30T00:00:00"",
+  ""Department"": ""IT"",
+  ""JobTitle"": ""Support""
+}", moss.ToString());
 
             JObject jen = new JObject();
             jen["FirstName"] = "Jen";
@@ -658,14 +695,13 @@ Parameter name: arrayIndex");
             jen["Department"] = "IT";
             jen["JobTitle"] = "Manager";
 
-            Console.WriteLine(jen.ToString());
-            //{
-            //  "FirstName": "Jen",
-            //  "LastName": "Barber",
-            //  "BirthDate": "\/Date(258721200000+1300)\/",
-            //  "Department": "IT",
-            //  "JobTitle": "Manager"
-            //}
+            StringAssert.AreEqual(@"{
+  ""FirstName"": ""Jen"",
+  ""LastName"": ""Barber"",
+  ""BirthDate"": ""1978-03-15T00:00:00"",
+  ""Department"": ""IT"",
+  ""JobTitle"": ""Manager""
+}", jen.ToString());
         }
 
         [Test]
@@ -701,7 +737,7 @@ Parameter name: arrayIndex");
             Assert.AreEqual(p4, l[1]);
         }
 
-#if !(NET20 || NETFX_CORE || PORTABLE || ASPNETCORE50 || PORTABLE40)
+#if !(NET20 || PORTABLE || PORTABLE40) || NETSTANDARD1_3 || NETSTANDARD2_0
         [Test]
         public void PropertyChanging()
         {
@@ -1244,7 +1280,7 @@ Parameter name: arrayIndex");
             }, "Can not add property Test3 to Newtonsoft.Json.Linq.JObject. Property with the same name already exists on object.");
         }
 
-#if !(NETFX_CORE || PORTABLE || ASPNETCORE50 || PORTABLE40)
+#if !(PORTABLE || DNXCORE50 || PORTABLE40) || NETSTANDARD2_0
         [Test]
         public void IBindingListSortDirection()
         {
@@ -1439,7 +1475,7 @@ Parameter name: arrayIndex");
         }
 #endif
 
-#if !(NET20 || NET35 || PORTABLE40)
+#if !(NET20 || NET35 || PORTABLE40) || NETSTANDARD2_0
         [Test]
         public void CollectionChanged()
         {
@@ -1568,7 +1604,7 @@ Parameter name: arrayIndex");
             Assert.AreEqual("Name2", value);
         }
 
-#if !(NETFX_CORE || PORTABLE || ASPNETCORE50 || PORTABLE40)
+#if !(PORTABLE || DNXCORE50 || PORTABLE40) || NETSTANDARD2_0
         [Test]
         public void WriteObjectNullDBNullValue()
         {
@@ -1677,10 +1713,10 @@ Parameter name: arrayIndex");
                 reader.Read();
 
                 JToken.ReadFrom(reader);
-            }, "Unexpected end of content while loading JObject. Path 'short.error.code', line 6, position 15.");
+            }, "Unexpected end of content while loading JObject. Path 'short.error.code', line 6, position 14.");
         }
 
-#if !(NETFX_CORE || PORTABLE || ASPNETCORE50 || PORTABLE40)
+#if !(PORTABLE || DNXCORE50 || PORTABLE40) || NETSTANDARD2_0
         [Test]
         public void GetProperties()
         {
@@ -1772,7 +1808,7 @@ Parameter name: arrayIndex");
 }, 987987";
 
                 JObject o = JObject.Parse(json);
-            }, "Additional text encountered after finished reading JSON content: ,. Path '', line 10, position 2.");
+            }, "Additional text encountered after finished reading JSON content: ,. Path '', line 10, position 1.");
         }
 
         [Test]
@@ -1924,7 +1960,9 @@ Parameter name: arrayIndex");
                     o.WriteTo(writer);
                 }
                 else
+                {
                     token.WriteTo(writer);
+                }
             }
 
             public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
@@ -1960,6 +1998,93 @@ Parameter name: arrayIndex");
             var json = JsonConvert.SerializeObject(p, settings);
 
             Assert.AreEqual(@"{""foo"":""bar"",""name"":""Daniel Wertheim"",""birthDate"":""0001-01-01T00:00:00"",""lastModified"":""0001-01-01T00:00:00""}", json);
+        }
+
+        [Test]
+        public void Parse_NoComments()
+        {
+            string json = "{'prop':[1,2/*comment*/,3]}";
+
+            JObject o = JObject.Parse(json, new JsonLoadSettings
+            {
+                CommentHandling = CommentHandling.Ignore
+            });
+
+            Assert.AreEqual(3, o["prop"].Count());
+            Assert.AreEqual(1, (int)o["prop"][0]);
+            Assert.AreEqual(2, (int)o["prop"][1]);
+            Assert.AreEqual(3, (int)o["prop"][2]);
+        }
+
+        [Test]
+        public void Parse_ExcessiveContentJustComments()
+        {
+            string json = @"{'prop':[1,2,3]}/*comment*/
+//Another comment.";
+
+            JObject o = JObject.Parse(json);
+
+            Assert.AreEqual(3, o["prop"].Count());
+            Assert.AreEqual(1, (int)o["prop"][0]);
+            Assert.AreEqual(2, (int)o["prop"][1]);
+            Assert.AreEqual(3, (int)o["prop"][2]);
+        }
+
+        [Test]
+        public void Parse_ExcessiveContent()
+        {
+            string json = @"{'prop':[1,2,3]}/*comment*/
+//Another comment.
+[]";
+
+            ExceptionAssert.Throws<JsonReaderException>(() => JObject.Parse(json),
+                "Additional text encountered after finished reading JSON content: [. Path '', line 3, position 0.");
+        }
+
+#if !(PORTABLE || DNXCORE50 || PORTABLE40) || NETSTANDARD2_0
+        [Test]
+        public void GetPropertyOwner_ReturnsJObject()
+        {
+            ICustomTypeDescriptor o = new JObject
+            {
+                ["prop1"] = 1
+            };
+
+            PropertyDescriptorCollection properties = o.GetProperties();
+            Assert.AreEqual(1, properties.Count);
+
+            PropertyDescriptor pd = properties[0];      
+            Assert.AreEqual("prop1", pd.Name);
+
+            object owner = o.GetPropertyOwner(pd);
+            Assert.AreEqual(o, owner);
+
+            object value = pd.GetValue(owner);
+            Assert.AreEqual(1, (int)(JToken)value);
+        }
+#endif
+
+        [Test]
+        public void Property()
+        {
+            JObject a = new JObject();
+            a["Name"] = "Name!";
+            a["name"] = "name!";
+            a["title"] = "Title!";
+
+            Assert.AreEqual(null, a.Property("NAME", StringComparison.Ordinal));
+            Assert.AreEqual(null, a.Property("NAME"));
+            Assert.AreEqual(null, a.Property("TITLE"));
+            Assert.AreEqual(null, a.Property(null, StringComparison.Ordinal));
+            Assert.AreEqual(null, a.Property(null, StringComparison.OrdinalIgnoreCase));
+            Assert.AreEqual(null, a.Property(null));
+
+            // Return first match when ignoring case
+            Assert.AreEqual("Name", a.Property("NAME", StringComparison.OrdinalIgnoreCase).Name);
+            // Return exact match before ignoring case
+            Assert.AreEqual("name", a.Property("name", StringComparison.OrdinalIgnoreCase).Name);
+            // Return exact match without ignoring case
+            Assert.AreEqual("name", a.Property("name", StringComparison.Ordinal).Name);
         }
     }
 }

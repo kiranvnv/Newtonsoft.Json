@@ -35,19 +35,15 @@ namespace Newtonsoft.Json.Serialization
 {
     internal enum JsonContractType
     {
-        None,
-        Object,
-        Array,
-        Primitive,
-        String,
-        Dictionary,
-#if !(NET35 || NET20 || PORTABLE40)
-        Dynamic,
-#endif
-#if !(NETFX_CORE || PORTABLE || PORTABLE40)
-        Serializable,
-#endif
-        Linq
+        None = 0,
+        Object = 1,
+        Array = 2,
+        Primitive = 3,
+        String = 4,
+        Dictionary = 5,
+        Dynamic = 6,
+        Serializable = 7,
+        Linq = 8
     }
 
     /// <summary>
@@ -80,7 +76,7 @@ namespace Newtonsoft.Json.Serialization
     public delegate IEnumerable<KeyValuePair<object, object>> ExtensionDataGetter(object o);
 
     /// <summary>
-    /// Contract details for a <see cref="Type"/> used by the <see cref="JsonSerializer"/>.
+    /// Contract details for a <see cref="System.Type"/> used by the <see cref="JsonSerializer"/>.
     /// </summary>
     public abstract class JsonContract
     {
@@ -105,7 +101,7 @@ namespace Newtonsoft.Json.Serialization
         /// Gets the underlying type for the contract.
         /// </summary>
         /// <value>The underlying type for the contract.</value>
-        public Type UnderlyingType { get; private set; }
+        public Type UnderlyingType { get; }
 
         /// <summary>
         /// Gets or sets the type created during deserialization.
@@ -113,7 +109,7 @@ namespace Newtonsoft.Json.Serialization
         /// <value>The type created during deserialization.</value>
         public Type CreatedType
         {
-            get { return _createdType; }
+            get => _createdType;
             set
             {
                 _createdType = value;
@@ -148,7 +144,9 @@ namespace Newtonsoft.Json.Serialization
             get
             {
                 if (_onDeserializedCallbacks == null)
+                {
                     _onDeserializedCallbacks = new List<SerializationCallback>();
+                }
 
                 return _onDeserializedCallbacks;
             }
@@ -163,7 +161,9 @@ namespace Newtonsoft.Json.Serialization
             get
             {
                 if (_onDeserializingCallbacks == null)
+                {
                     _onDeserializingCallbacks = new List<SerializationCallback>();
+                }
 
                 return _onDeserializingCallbacks;
             }
@@ -178,7 +178,9 @@ namespace Newtonsoft.Json.Serialization
             get
             {
                 if (_onSerializedCallbacks == null)
+                {
                     _onSerializedCallbacks = new List<SerializationCallback>();
+                }
 
                 return _onSerializedCallbacks;
             }
@@ -193,7 +195,9 @@ namespace Newtonsoft.Json.Serialization
             get
             {
                 if (_onSerializingCallbacks == null)
+                {
                     _onSerializingCallbacks = new List<SerializationCallback>();
+                }
 
                 return _onSerializingCallbacks;
             }
@@ -208,84 +212,11 @@ namespace Newtonsoft.Json.Serialization
             get
             {
                 if (_onErrorCallbacks == null)
+                {
                     _onErrorCallbacks = new List<SerializationErrorCallback>();
+                }
 
                 return _onErrorCallbacks;
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets the method called immediately after deserialization of the object.
-        /// </summary>
-        /// <value>The method called immediately after deserialization of the object.</value>
-        [Obsolete("This property is obsolete and has been replaced by the OnDeserializedCallbacks collection.")]
-        public MethodInfo OnDeserialized
-        {
-            get { return (OnDeserializedCallbacks.Count > 0) ? OnDeserializedCallbacks[0].Method() : null; }
-            set
-            {
-                OnDeserializedCallbacks.Clear();
-                OnDeserializedCallbacks.Add(CreateSerializationCallback(value));
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets the method called during deserialization of the object.
-        /// </summary>
-        /// <value>The method called during deserialization of the object.</value>
-        [Obsolete("This property is obsolete and has been replaced by the OnDeserializingCallbacks collection.")]
-        public MethodInfo OnDeserializing
-        {
-            get { return (OnDeserializingCallbacks.Count > 0) ? OnDeserializingCallbacks[0].Method() : null; }
-            set
-            {
-                OnDeserializingCallbacks.Clear();
-                OnDeserializingCallbacks.Add(CreateSerializationCallback(value));
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets the method called after serialization of the object graph.
-        /// </summary>
-        /// <value>The method called after serialization of the object graph.</value>
-        [Obsolete("This property is obsolete and has been replaced by the OnSerializedCallbacks collection.")]
-        public MethodInfo OnSerialized
-        {
-            get { return (OnSerializedCallbacks.Count > 0) ? OnSerializedCallbacks[0].Method() : null; }
-            set
-            {
-                OnSerializedCallbacks.Clear();
-                OnSerializedCallbacks.Add(CreateSerializationCallback(value));
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets the method called before serialization of the object.
-        /// </summary>
-        /// <value>The method called before serialization of the object.</value>
-        [Obsolete("This property is obsolete and has been replaced by the OnSerializingCallbacks collection.")]
-        public MethodInfo OnSerializing
-        {
-            get { return (OnSerializingCallbacks.Count > 0) ? OnSerializingCallbacks[0].Method() : null; }
-            set
-            {
-                OnSerializingCallbacks.Clear();
-                OnSerializingCallbacks.Add(CreateSerializationCallback(value));
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets the method called when an error is thrown during the serialization of the object.
-        /// </summary>
-        /// <value>The method called when an error is thrown during the serialization of the object.</value>
-        [Obsolete("This property is obsolete and has been replaced by the OnErrorCallbacks collection.")]
-        public MethodInfo OnError
-        {
-            get { return (OnErrorCallbacks.Count > 0) ? OnErrorCallbacks[0].Method() : null; }
-            set
-            {
-                OnErrorCallbacks.Clear();
-                OnErrorCallbacks.Add(CreateSerializationErrorCallback(value));
             }
         }
 
@@ -296,18 +227,23 @@ namespace Newtonsoft.Json.Serialization
         public Func<object> DefaultCreator { get; set; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether the default creator is non public.
+        /// Gets or sets a value indicating whether the default creator is non-public.
         /// </summary>
         /// <value><c>true</c> if the default object creator is non-public; otherwise, <c>false</c>.</value>
         public bool DefaultCreatorNonPublic { get; set; }
 
         internal JsonContract(Type underlyingType)
         {
-            ValidationUtils.ArgumentNotNull(underlyingType, "underlyingType");
+            ValidationUtils.ArgumentNotNull(underlyingType, nameof(underlyingType));
 
             UnderlyingType = underlyingType;
 
+            // resolve ByRef types
+            // typically comes from in and ref parameters on methods/ctors
+            underlyingType = ReflectionUtils.EnsureNotByRefType(underlyingType);
+
             IsNullable = ReflectionUtils.IsNullable(underlyingType);
+             
             NonNullableUnderlyingType = (IsNullable && ReflectionUtils.IsNullableType(underlyingType)) ? Nullable.GetUnderlyingType(underlyingType) : underlyingType;
 
             CreatedType = NonNullableUnderlyingType;
@@ -315,36 +251,7 @@ namespace Newtonsoft.Json.Serialization
             IsConvertable = ConvertUtils.IsConvertible(NonNullableUnderlyingType);
             IsEnum = NonNullableUnderlyingType.IsEnum();
 
-            if (NonNullableUnderlyingType == typeof(byte[]))
-            {
-                InternalReadType = ReadType.ReadAsBytes;
-            }
-            else if (NonNullableUnderlyingType == typeof(int))
-            {
-                InternalReadType = ReadType.ReadAsInt32;
-            }
-            else if (NonNullableUnderlyingType == typeof(decimal))
-            {
-                InternalReadType = ReadType.ReadAsDecimal;
-            }
-            else if (NonNullableUnderlyingType == typeof(string))
-            {
-                InternalReadType = ReadType.ReadAsString;
-            }
-            else if (NonNullableUnderlyingType == typeof(DateTime))
-            {
-                InternalReadType = ReadType.ReadAsDateTime;
-            }
-#if !NET20
-            else if (NonNullableUnderlyingType == typeof(DateTimeOffset))
-            {
-                InternalReadType = ReadType.ReadAsDateTimeOffset;
-            }
-#endif
-            else
-            {
-                InternalReadType = ReadType.Read;
-            }
+            InternalReadType = ReadType.Read;
         }
 
         internal void InvokeOnSerializing(object o, StreamingContext context)

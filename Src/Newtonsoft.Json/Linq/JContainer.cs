@@ -25,7 +25,7 @@
 
 using System;
 using System.Collections.Generic;
-#if !PORTABLE40
+#if HAVE_INOTIFY_COLLECTION_CHANGED
 using System.Collections.Specialized;
 #endif
 using System.Threading;
@@ -33,7 +33,7 @@ using Newtonsoft.Json.Utilities;
 using System.Collections;
 using System.Globalization;
 using System.ComponentModel;
-#if NET20
+#if !HAVE_LINQ
 using Newtonsoft.Json.Utilities.LinqBridge;
 #else
 using System.Linq;
@@ -45,18 +45,16 @@ namespace Newtonsoft.Json.Linq
     /// <summary>
     /// Represents a token that can contain other tokens.
     /// </summary>
-    public abstract class JContainer : JToken, IList<JToken>
-#if !(NETFX_CORE || PORTABLE || PORTABLE40)
+    public abstract partial class JContainer : JToken, IList<JToken>
+#if HAVE_COMPONENT_MODEL
         , ITypedList, IBindingList
-#elif PORTABLE
-        , INotifyCollectionChanged
 #endif
         , IList
-#if !(NET20 || NET35 || NETFX_CORE || PORTABLE40 || PORTABLE)
+#if HAVE_INOTIFY_COLLECTION_CHANGED
         , INotifyCollectionChanged
 #endif
     {
-#if !(NETFX_CORE || PORTABLE40 || PORTABLE)
+#if HAVE_COMPONENT_MODEL
         internal ListChangedEventHandler _listChanged;
         internal AddingNewEventHandler _addingNew;
 
@@ -65,8 +63,8 @@ namespace Newtonsoft.Json.Linq
         /// </summary>
         public event ListChangedEventHandler ListChanged
         {
-            add { _listChanged += value; }
-            remove { _listChanged -= value; }
+            add => _listChanged += value;
+            remove => _listChanged -= value;
         }
 
         /// <summary>
@@ -74,11 +72,11 @@ namespace Newtonsoft.Json.Linq
         /// </summary>
         public event AddingNewEventHandler AddingNew
         {
-            add { _addingNew += value; }
-            remove { _addingNew -= value; }
+            add => _addingNew += value;
+            remove => _addingNew -= value;
         }
 #endif
-#if !(NET20 || NET35 || PORTABLE40)
+#if HAVE_INOTIFY_COLLECTION_CHANGED
         internal NotifyCollectionChangedEventHandler _collectionChanged;
 
         /// <summary>
@@ -98,7 +96,7 @@ namespace Newtonsoft.Json.Linq
         protected abstract IList<JToken> ChildrenTokens { get; }
 
         private object _syncRoot;
-#if !(PORTABLE40)
+#if (HAVE_COMPONENT_MODEL || HAVE_INOTIFY_COLLECTION_CHANGED)
         private bool _busy;
 #endif
 
@@ -109,7 +107,7 @@ namespace Newtonsoft.Json.Linq
         internal JContainer(JContainer other)
             : this()
         {
-            ValidationUtils.ArgumentNotNull(other, "c");
+            ValidationUtils.ArgumentNotNull(other, nameof(other));
 
             int i = 0;
             foreach (JToken child in other)
@@ -121,9 +119,11 @@ namespace Newtonsoft.Json.Linq
 
         internal void CheckReentrancy()
         {
-#if !(PORTABLE40)
+#if (HAVE_COMPONENT_MODEL || HAVE_INOTIFY_COLLECTION_CHANGED)
             if (_busy)
+            {
                 throw new InvalidOperationException("Cannot change {0} during a collection change event.".FormatWith(CultureInfo.InvariantCulture, GetType()));
+            }
 #endif
         }
 
@@ -132,16 +132,14 @@ namespace Newtonsoft.Json.Linq
             return new List<JToken>();
         }
 
-#if !(NETFX_CORE || PORTABLE40 || PORTABLE)
+#if HAVE_COMPONENT_MODEL
         /// <summary>
         /// Raises the <see cref="AddingNew"/> event.
         /// </summary>
         /// <param name="e">The <see cref="AddingNewEventArgs"/> instance containing the event data.</param>
         protected virtual void OnAddingNew(AddingNewEventArgs e)
         {
-            AddingNewEventHandler handler = _addingNew;
-            if (handler != null)
-                handler(this, e);
+            _addingNew?.Invoke(this, e);
         }
 
         /// <summary>
@@ -166,7 +164,7 @@ namespace Newtonsoft.Json.Linq
             }
         }
 #endif
-#if !(NET20 || NET35 || PORTABLE40)
+#if HAVE_INOTIFY_COLLECTION_CHANGED
         /// <summary>
         /// Raises the <see cref="CollectionChanged"/> event.
         /// </summary>
@@ -196,26 +194,29 @@ namespace Newtonsoft.Json.Linq
         /// <value>
         /// 	<c>true</c> if this token has child values; otherwise, <c>false</c>.
         /// </value>
-        public override bool HasValues
-        {
-            get { return ChildrenTokens.Count > 0; }
-        }
+        public override bool HasValues => ChildrenTokens.Count > 0;
 
         internal bool ContentsEqual(JContainer container)
         {
             if (container == this)
+            {
                 return true;
+            }
 
             IList<JToken> t1 = ChildrenTokens;
             IList<JToken> t2 = container.ChildrenTokens;
 
             if (t1.Count != t2.Count)
+            {
                 return false;
+            }
 
             for (int i = 0; i < t1.Count; i++)
             {
                 if (!t1[i].DeepEquals(t2[i]))
+                {
                     return false;
+                }
             }
 
             return true;
@@ -229,7 +230,11 @@ namespace Newtonsoft.Json.Linq
         /// </value>
         public override JToken First
         {
-            get { return ChildrenTokens.FirstOrDefault(); }
+            get
+            {
+                IList<JToken> children = ChildrenTokens;
+                return (children.Count > 0) ? children[0] : null;
+            }
         }
 
         /// <summary>
@@ -240,7 +245,12 @@ namespace Newtonsoft.Json.Linq
         /// </value>
         public override JToken Last
         {
-            get { return ChildrenTokens.LastOrDefault(); }
+            get
+            {
+                IList<JToken> children = ChildrenTokens;
+                int count = children.Count;
+                return (count > 0) ? children[count - 1] : null;
+            }
         }
 
         /// <summary>
@@ -269,14 +279,32 @@ namespace Newtonsoft.Json.Linq
         /// <summary>
         /// Returns a collection of the descendant tokens for this token in document order.
         /// </summary>
-        /// <returns>An <see cref="IEnumerable{JToken}"/> containing the descendant tokens of the <see cref="JToken"/>.</returns>
+        /// <returns>An <see cref="IEnumerable{T}"/> of <see cref="JToken"/> containing the descendant tokens of the <see cref="JToken"/>.</returns>
         public IEnumerable<JToken> Descendants()
         {
+            return GetDescendants(false);
+        }
+
+        /// <summary>
+        /// Returns a collection of the tokens that contain this token, and all descendant tokens of this token, in document order.
+        /// </summary>
+        /// <returns>An <see cref="IEnumerable{T}"/> of <see cref="JToken"/> containing this token, and all the descendant tokens of the <see cref="JToken"/>.</returns>
+        public IEnumerable<JToken> DescendantsAndSelf()
+        {
+            return GetDescendants(true);
+        }
+
+        internal IEnumerable<JToken> GetDescendants(bool self)
+        {
+            if (self)
+            {
+                yield return this;
+            }
+
             foreach (JToken o in ChildrenTokens)
             {
                 yield return o;
-                JContainer c = o as JContainer;
-                if (c != null)
+                if (o is JContainer c)
                 {
                     foreach (JToken d in c.Descendants())
                     {
@@ -294,56 +322,45 @@ namespace Newtonsoft.Json.Linq
         internal JToken EnsureParentToken(JToken item, bool skipParentCheck)
         {
             if (item == null)
+            {
                 return JValue.CreateNull();
+            }
 
             if (skipParentCheck)
+            {
                 return item;
+            }
 
             // to avoid a token having multiple parents or creating a recursive loop, create a copy if...
             // the item already has a parent
             // the item is being added to itself
             // the item is being added to the root parent of itself
             if (item.Parent != null || item == this || (item.HasValues && Root == item))
+            {
                 item = item.CloneToken();
+            }
 
             return item;
         }
 
-        private class JTokenReferenceEqualityComparer : IEqualityComparer<JToken>
-        {
-            public static readonly JTokenReferenceEqualityComparer Instance = new JTokenReferenceEqualityComparer();
-
-            public bool Equals(JToken x, JToken y)
-            {
-                return ReferenceEquals(x, y);
-            }
-
-            public int GetHashCode(JToken obj)
-            {
-                if (obj == null)
-                    return 0;
-
-                return obj.GetHashCode();
-            }
-        }
-
-        internal int IndexOfItem(JToken item)
-        {
-            return ChildrenTokens.IndexOf(item, JTokenReferenceEqualityComparer.Instance);
-        }
+        internal abstract int IndexOfItem(JToken item);
 
         internal virtual void InsertItem(int index, JToken item, bool skipParentCheck)
         {
-            if (index > ChildrenTokens.Count)
-                throw new ArgumentOutOfRangeException("index", "Index must be within the bounds of the List.");
+            IList<JToken> children = ChildrenTokens;
+
+            if (index > children.Count)
+            {
+                throw new ArgumentOutOfRangeException(nameof(index), "Index must be within the bounds of the List.");
+            }
 
             CheckReentrancy();
 
             item = EnsureParentToken(item, skipParentCheck);
 
-            JToken previous = (index == 0) ? null : ChildrenTokens[index - 1];
+            JToken previous = (index == 0) ? null : children[index - 1];
             // haven't inserted new token yet so next token is still at the inserting index
-            JToken next = (index == ChildrenTokens.Count) ? null : ChildrenTokens[index];
+            JToken next = (index == children.Count) ? null : children[index];
 
             ValidateToken(item, null);
 
@@ -351,55 +368,77 @@ namespace Newtonsoft.Json.Linq
 
             item.Previous = previous;
             if (previous != null)
+            {
                 previous.Next = item;
+            }
 
             item.Next = next;
             if (next != null)
+            {
                 next.Previous = item;
+            }
 
-            ChildrenTokens.Insert(index, item);
+            children.Insert(index, item);
 
-#if !(NETFX_CORE || PORTABLE40 || PORTABLE)
+#if HAVE_COMPONENT_MODEL
             if (_listChanged != null)
+            {
                 OnListChanged(new ListChangedEventArgs(ListChangedType.ItemAdded, index));
+            }
 #endif
-#if !(NET20 || NET35 || PORTABLE40)
+#if HAVE_INOTIFY_COLLECTION_CHANGED
             if (_collectionChanged != null)
+            {
                 OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
+            }
 #endif
         }
 
         internal virtual void RemoveItemAt(int index)
         {
+            IList<JToken> children = ChildrenTokens;
+
             if (index < 0)
-                throw new ArgumentOutOfRangeException("index", "Index is less than 0.");
-            if (index >= ChildrenTokens.Count)
-                throw new ArgumentOutOfRangeException("index", "Index is equal to or greater than Count.");
+            {
+                throw new ArgumentOutOfRangeException(nameof(index), "Index is less than 0.");
+            }
+            if (index >= children.Count)
+            {
+                throw new ArgumentOutOfRangeException(nameof(index), "Index is equal to or greater than Count.");
+            }
 
             CheckReentrancy();
 
-            JToken item = ChildrenTokens[index];
-            JToken previous = (index == 0) ? null : ChildrenTokens[index - 1];
-            JToken next = (index == ChildrenTokens.Count - 1) ? null : ChildrenTokens[index + 1];
+            JToken item = children[index];
+            JToken previous = (index == 0) ? null : children[index - 1];
+            JToken next = (index == children.Count - 1) ? null : children[index + 1];
 
             if (previous != null)
+            {
                 previous.Next = next;
+            }
             if (next != null)
+            {
                 next.Previous = previous;
+            }
 
             item.Parent = null;
             item.Previous = null;
             item.Next = null;
 
-            ChildrenTokens.RemoveAt(index);
+            children.RemoveAt(index);
 
-#if !(NETFX_CORE || PORTABLE40 || PORTABLE)
+#if HAVE_COMPONENT_MODEL
             if (_listChanged != null)
+            {
                 OnListChanged(new ListChangedEventArgs(ListChangedType.ItemDeleted, index));
+            }
 #endif
-#if !(NET20 || NET35 || PORTABLE40)
+#if HAVE_INOTIFY_COLLECTION_CHANGED
             if (_collectionChanged != null)
+            {
                 OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item, index));
+            }
 #endif
         }
 
@@ -422,15 +461,23 @@ namespace Newtonsoft.Json.Linq
 
         internal virtual void SetItem(int index, JToken item)
         {
-            if (index < 0)
-                throw new ArgumentOutOfRangeException("index", "Index is less than 0.");
-            if (index >= ChildrenTokens.Count)
-                throw new ArgumentOutOfRangeException("index", "Index is equal to or greater than Count.");
+            IList<JToken> children = ChildrenTokens;
 
-            JToken existing = ChildrenTokens[index];
+            if (index < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(index), "Index is less than 0.");
+            }
+            if (index >= children.Count)
+            {
+                throw new ArgumentOutOfRangeException(nameof(index), "Index is equal to or greater than Count.");
+            }
+
+            JToken existing = children[index];
 
             if (IsTokenUnchanged(existing, item))
+            {
                 return;
+            }
 
             CheckReentrancy();
 
@@ -438,32 +485,40 @@ namespace Newtonsoft.Json.Linq
 
             ValidateToken(item, existing);
 
-            JToken previous = (index == 0) ? null : ChildrenTokens[index - 1];
-            JToken next = (index == ChildrenTokens.Count - 1) ? null : ChildrenTokens[index + 1];
+            JToken previous = (index == 0) ? null : children[index - 1];
+            JToken next = (index == children.Count - 1) ? null : children[index + 1];
 
             item.Parent = this;
 
             item.Previous = previous;
             if (previous != null)
+            {
                 previous.Next = item;
+            }
 
             item.Next = next;
             if (next != null)
+            {
                 next.Previous = item;
+            }
 
-            ChildrenTokens[index] = item;
+            children[index] = item;
 
             existing.Parent = null;
             existing.Previous = null;
             existing.Next = null;
 
-#if !(NETFX_CORE || PORTABLE || PORTABLE40)
+#if HAVE_COMPONENT_MODEL
             if (_listChanged != null)
+            {
                 OnListChanged(new ListChangedEventArgs(ListChangedType.ItemChanged, index));
+            }
 #endif
-#if !(NET20 || NET35 || PORTABLE40)
+#if HAVE_INOTIFY_COLLECTION_CHANGED
             if (_collectionChanged != null)
+            {
                 OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, item, existing, index));
+            }
 #endif
         }
 
@@ -471,29 +526,37 @@ namespace Newtonsoft.Json.Linq
         {
             CheckReentrancy();
 
-            foreach (JToken item in ChildrenTokens)
+            IList<JToken> children = ChildrenTokens;
+
+            foreach (JToken item in children)
             {
                 item.Parent = null;
                 item.Previous = null;
                 item.Next = null;
             }
 
-            ChildrenTokens.Clear();
+            children.Clear();
 
-#if !(NETFX_CORE || PORTABLE40 || PORTABLE)
+#if HAVE_COMPONENT_MODEL
             if (_listChanged != null)
+            {
                 OnListChanged(new ListChangedEventArgs(ListChangedType.Reset, -1));
+            }
 #endif
-#if !(NET20 || NET35 || PORTABLE40)
+#if HAVE_INOTIFY_COLLECTION_CHANGED
             if (_collectionChanged != null)
+            {
                 OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+            }
 #endif
         }
 
         internal virtual void ReplaceItem(JToken existing, JToken replacement)
         {
             if (existing == null || existing.Parent != this)
+            {
                 return;
+            }
 
             int index = IndexOfItem(existing);
             SetItem(index, replacement);
@@ -507,13 +570,21 @@ namespace Newtonsoft.Json.Linq
         internal virtual void CopyItemsTo(Array array, int arrayIndex)
         {
             if (array == null)
-                throw new ArgumentNullException("array");
+            {
+                throw new ArgumentNullException(nameof(array));
+            }
             if (arrayIndex < 0)
-                throw new ArgumentOutOfRangeException("arrayIndex", "arrayIndex is less than 0.");
+            {
+                throw new ArgumentOutOfRangeException(nameof(arrayIndex), "arrayIndex is less than 0.");
+            }
             if (arrayIndex >= array.Length && arrayIndex != 0)
+            {
                 throw new ArgumentException("arrayIndex is equal to or greater than the length of array.");
+            }
             if (Count > array.Length - arrayIndex)
+            {
                 throw new ArgumentException("The number of elements in the source JObject is greater than the available space from arrayIndex to the end of the destination array.");
+            }
 
             int index = 0;
             foreach (JToken token in ChildrenTokens)
@@ -525,12 +596,13 @@ namespace Newtonsoft.Json.Linq
 
         internal static bool IsTokenUnchanged(JToken currentValue, JToken newValue)
         {
-            JValue v1 = currentValue as JValue;
-            if (v1 != null)
+            if (currentValue is JValue v1)
             {
                 // null will get turned into a JValue of type null
                 if (v1.Type == JTokenType.Null && newValue == null)
+                {
                     return true;
+                }
 
                 return v1.Equals(newValue);
             }
@@ -540,10 +612,12 @@ namespace Newtonsoft.Json.Linq
 
         internal virtual void ValidateToken(JToken o, JToken existing)
         {
-            ValidationUtils.ArgumentNotNull(o, "o");
+            ValidationUtils.ArgumentNotNull(o, nameof(o));
 
             if (o.Type == JTokenType.Property)
+            {
                 throw new ArgumentException("Can not add {0} to {1}.".FormatWith(CultureInfo.InvariantCulture, o.GetType(), GetType()));
+            }
         }
 
         /// <summary>
@@ -592,23 +666,25 @@ namespace Newtonsoft.Json.Linq
 
         internal static JToken CreateFromContent(object content)
         {
-            if (content is JToken)
-                return (JToken)content;
+            if (content is JToken token)
+            {
+                return token;
+            }
 
             return new JValue(content);
         }
 
         /// <summary>
-        /// Creates an <see cref="JsonWriter"/> that can be used to add tokens to the <see cref="JToken"/>.
+        /// Creates a <see cref="JsonWriter"/> that can be used to add tokens to the <see cref="JToken"/>.
         /// </summary>
-        /// <returns>An <see cref="JsonWriter"/> that is ready to have content written to it.</returns>
+        /// <returns>A <see cref="JsonWriter"/> that is ready to have content written to it.</returns>
         public JsonWriter CreateWriter()
         {
             return new JTokenWriter(this);
         }
 
         /// <summary>
-        /// Replaces the children nodes of this token with the specified content.
+        /// Replaces the child nodes of this token with the specified content.
         /// </summary>
         /// <param name="content">The content.</param>
         public void ReplaceAll(object content)
@@ -646,34 +722,40 @@ namespace Newtonsoft.Json.Linq
             MergeItem(content, settings);
         }
 
-        internal void ReadTokenFrom(JsonReader reader)
+        internal void ReadTokenFrom(JsonReader reader, JsonLoadSettings options)
         {
             int startDepth = reader.Depth;
 
             if (!reader.Read())
+            {
                 throw JsonReaderException.Create(reader, "Error reading {0} from JsonReader.".FormatWith(CultureInfo.InvariantCulture, GetType().Name));
+            }
 
-            ReadContentFrom(reader);
+            ReadContentFrom(reader, options);
 
             int endDepth = reader.Depth;
 
             if (endDepth > startDepth)
+            {
                 throw JsonReaderException.Create(reader, "Unexpected end of content while loading {0}.".FormatWith(CultureInfo.InvariantCulture, GetType().Name));
+            }
         }
 
-        internal void ReadContentFrom(JsonReader r)
+        internal void ReadContentFrom(JsonReader r, JsonLoadSettings settings)
         {
-            ValidationUtils.ArgumentNotNull(r, "r");
+            ValidationUtils.ArgumentNotNull(r, nameof(r));
             IJsonLineInfo lineInfo = r as IJsonLineInfo;
 
             JContainer parent = this;
 
             do
             {
-                if (parent is JProperty && ((JProperty)parent).Value != null)
+                if (parent is JProperty p && p.Value != null)
                 {
                     if (parent == this)
+                    {
                         return;
+                    }
 
                     parent = parent.Parent;
                 }
@@ -685,38 +767,44 @@ namespace Newtonsoft.Json.Linq
                         break;
                     case JsonToken.StartArray:
                         JArray a = new JArray();
-                        a.SetLineInfo(lineInfo);
+                        a.SetLineInfo(lineInfo, settings);
                         parent.Add(a);
                         parent = a;
                         break;
 
                     case JsonToken.EndArray:
                         if (parent == this)
+                        {
                             return;
+                        }
 
                         parent = parent.Parent;
                         break;
                     case JsonToken.StartObject:
                         JObject o = new JObject();
-                        o.SetLineInfo(lineInfo);
+                        o.SetLineInfo(lineInfo, settings);
                         parent.Add(o);
                         parent = o;
                         break;
                     case JsonToken.EndObject:
                         if (parent == this)
+                        {
                             return;
+                        }
 
                         parent = parent.Parent;
                         break;
                     case JsonToken.StartConstructor:
                         JConstructor constructor = new JConstructor(r.Value.ToString());
-                        constructor.SetLineInfo(lineInfo);
+                        constructor.SetLineInfo(lineInfo, settings);
                         parent.Add(constructor);
                         parent = constructor;
                         break;
                     case JsonToken.EndConstructor:
                         if (parent == this)
+                        {
                             return;
+                        }
 
                         parent = parent.Parent;
                         break;
@@ -727,35 +815,42 @@ namespace Newtonsoft.Json.Linq
                     case JsonToken.Boolean:
                     case JsonToken.Bytes:
                         JValue v = new JValue(r.Value);
-                        v.SetLineInfo(lineInfo);
+                        v.SetLineInfo(lineInfo, settings);
                         parent.Add(v);
                         break;
                     case JsonToken.Comment:
-                        v = JValue.CreateComment(r.Value.ToString());
-                        v.SetLineInfo(lineInfo);
-                        parent.Add(v);
+                        if (settings != null && settings.CommentHandling == CommentHandling.Load)
+                        {
+                            v = JValue.CreateComment(r.Value.ToString());
+                            v.SetLineInfo(lineInfo, settings);
+                            parent.Add(v);
+                        }
                         break;
                     case JsonToken.Null:
                         v = JValue.CreateNull();
-                        v.SetLineInfo(lineInfo);
+                        v.SetLineInfo(lineInfo, settings);
                         parent.Add(v);
                         break;
                     case JsonToken.Undefined:
                         v = JValue.CreateUndefined();
-                        v.SetLineInfo(lineInfo);
+                        v.SetLineInfo(lineInfo, settings);
                         parent.Add(v);
                         break;
                     case JsonToken.PropertyName:
                         string propertyName = r.Value.ToString();
                         JProperty property = new JProperty(propertyName);
-                        property.SetLineInfo(lineInfo);
+                        property.SetLineInfo(lineInfo, settings);
                         JObject parentObject = (JObject)parent;
                         // handle multiple properties with the same name in JSON
                         JProperty existingPropertyWithName = parentObject.Property(propertyName);
                         if (existingPropertyWithName == null)
+                        {
                             parent.Add(property);
+                        }
                         else
+                        {
                             existingPropertyWithName.Replace(property);
+                        }
                         parent = property;
                         break;
                     default:
@@ -774,7 +869,7 @@ namespace Newtonsoft.Json.Linq
             return hashCode;
         }
 
-#if !(NETFX_CORE || PORTABLE40 || PORTABLE)
+#if HAVE_COMPONENT_MODEL
         string ITypedList.GetListName(PropertyDescriptor[] listAccessors)
         {
             return string.Empty;
@@ -783,10 +878,7 @@ namespace Newtonsoft.Json.Linq
         PropertyDescriptorCollection ITypedList.GetItemProperties(PropertyDescriptor[] listAccessors)
         {
             ICustomTypeDescriptor d = First as ICustomTypeDescriptor;
-            if (d != null)
-                return d.GetProperties();
-
-            return null;
+            return d?.GetProperties();
         }
 #endif
 
@@ -808,8 +900,8 @@ namespace Newtonsoft.Json.Linq
 
         JToken IList<JToken>.this[int index]
         {
-            get { return GetItem(index); }
-            set { SetItem(index, value); }
+            get => GetItem(index);
+            set => SetItem(index, value);
         }
         #endregion
 
@@ -834,10 +926,7 @@ namespace Newtonsoft.Json.Linq
             CopyItemsTo(array, arrayIndex);
         }
 
-        bool ICollection<JToken>.IsReadOnly
-        {
-            get { return false; }
-        }
+        bool ICollection<JToken>.IsReadOnly => false;
 
         bool ICollection<JToken>.Remove(JToken item)
         {
@@ -848,10 +937,14 @@ namespace Newtonsoft.Json.Linq
         private JToken EnsureValue(object value)
         {
             if (value == null)
+            {
                 return null;
+            }
 
-            if (value is JToken)
-                return (JToken)value;
+            if (value is JToken token)
+            {
+                return token;
+            }
 
             throw new ArgumentException("Argument is not a JToken.");
         }
@@ -883,15 +976,9 @@ namespace Newtonsoft.Json.Linq
             InsertItem(index, EnsureValue(value), false);
         }
 
-        bool IList.IsFixedSize
-        {
-            get { return false; }
-        }
+        bool IList.IsFixedSize => false;
 
-        bool IList.IsReadOnly
-        {
-            get { return false; }
-        }
+        bool IList.IsReadOnly => false;
 
         void IList.Remove(object value)
         {
@@ -905,8 +992,8 @@ namespace Newtonsoft.Json.Linq
 
         object IList.this[int index]
         {
-            get { return GetItem(index); }
-            set { SetItem(index, EnsureValue(value)); }
+            get => GetItem(index);
+            set => SetItem(index, EnsureValue(value));
         }
         #endregion
 
@@ -919,23 +1006,19 @@ namespace Newtonsoft.Json.Linq
         /// <summary>
         /// Gets the count of child JSON tokens.
         /// </summary>
-        /// <value>The count of child JSON tokens</value>
-        public int Count
-        {
-            get { return ChildrenTokens.Count; }
-        }
+        /// <value>The count of child JSON tokens.</value>
+        public int Count => ChildrenTokens.Count;
 
-        bool ICollection.IsSynchronized
-        {
-            get { return false; }
-        }
+        bool ICollection.IsSynchronized => false;
 
         object ICollection.SyncRoot
         {
             get
             {
                 if (_syncRoot == null)
+                {
                     Interlocked.CompareExchange(ref _syncRoot, new object(), null);
+                }
 
                 return _syncRoot;
             }
@@ -943,7 +1026,7 @@ namespace Newtonsoft.Json.Linq
         #endregion
 
         #region IBindingList Members
-#if !(NETFX_CORE || PORTABLE || PORTABLE40)
+#if HAVE_COMPONENT_MODEL
         void IBindingList.AddIndex(PropertyDescriptor property)
         {
         }
@@ -954,31 +1037,25 @@ namespace Newtonsoft.Json.Linq
             OnAddingNew(args);
 
             if (args.NewObject == null)
+            {
                 throw new JsonException("Could not determine new value to add to '{0}'.".FormatWith(CultureInfo.InvariantCulture, GetType()));
+            }
 
-            if (!(args.NewObject is JToken))
+            if (!(args.NewObject is JToken newItem))
+            {
                 throw new JsonException("New item to be added to collection must be compatible with {0}.".FormatWith(CultureInfo.InvariantCulture, typeof(JToken)));
+            }
 
-            JToken newItem = (JToken)args.NewObject;
             Add(newItem);
 
             return newItem;
         }
 
-        bool IBindingList.AllowEdit
-        {
-            get { return true; }
-        }
+        bool IBindingList.AllowEdit => true;
 
-        bool IBindingList.AllowNew
-        {
-            get { return true; }
-        }
+        bool IBindingList.AllowNew => true;
 
-        bool IBindingList.AllowRemove
-        {
-            get { return true; }
-        }
+        bool IBindingList.AllowRemove => true;
 
         void IBindingList.ApplySort(PropertyDescriptor property, ListSortDirection direction)
         {
@@ -990,10 +1067,7 @@ namespace Newtonsoft.Json.Linq
             throw new NotSupportedException();
         }
 
-        bool IBindingList.IsSorted
-        {
-            get { return false; }
-        }
+        bool IBindingList.IsSorted => false;
 
         void IBindingList.RemoveIndex(PropertyDescriptor property)
         {
@@ -1004,30 +1078,15 @@ namespace Newtonsoft.Json.Linq
             throw new NotSupportedException();
         }
 
-        ListSortDirection IBindingList.SortDirection
-        {
-            get { return ListSortDirection.Ascending; }
-        }
+        ListSortDirection IBindingList.SortDirection => ListSortDirection.Ascending;
 
-        PropertyDescriptor IBindingList.SortProperty
-        {
-            get { return null; }
-        }
+        PropertyDescriptor IBindingList.SortProperty => null;
 
-        bool IBindingList.SupportsChangeNotification
-        {
-            get { return true; }
-        }
+        bool IBindingList.SupportsChangeNotification => true;
 
-        bool IBindingList.SupportsSearching
-        {
-            get { return false; }
-        }
+        bool IBindingList.SupportsSearching => false;
 
-        bool IBindingList.SupportsSorting
-        {
-            get { return false; }
-        }
+        bool IBindingList.SupportsSorting => false;
 #endif
         #endregion
 
@@ -1042,7 +1101,7 @@ namespace Newtonsoft.Json.Linq
                     }
                     break;
                 case MergeArrayHandling.Union:
-#if !NET20
+#if HAVE_HASH_SET
                     HashSet<JToken> items = new HashSet<JToken>(target, EqualityComparer);
 
                     foreach (JToken item in content)
@@ -1053,7 +1112,7 @@ namespace Newtonsoft.Json.Linq
                         }
                     }
 #else
-                    IDictionary<JToken, bool> items = new Dictionary<JToken, bool>(EqualityComparer);
+                    Dictionary<JToken, bool> items = new Dictionary<JToken, bool>(EqualityComparer);
                     foreach (JToken t in target)
                     {
                         items[t] = true;
@@ -1084,8 +1143,7 @@ namespace Newtonsoft.Json.Linq
                         {
                             JToken sourceItem = target[i];
 
-                            JContainer existingContainer = sourceItem as JContainer;
-                            if (existingContainer != null)
+                            if (sourceItem is JContainer existingContainer)
                             {
                                 existingContainer.Merge(targetItem, settings);
                             }
@@ -1095,7 +1153,9 @@ namespace Newtonsoft.Json.Linq
                                 {
                                     JToken contentValue = CreateFromContent(targetItem);
                                     if (contentValue.Type != JTokenType.Null)
+                                    {
                                         target[i] = contentValue;
+                                    }
                                 }
                             }
                         }
@@ -1108,7 +1168,7 @@ namespace Newtonsoft.Json.Linq
                     }
                     break;
                 default:
-                    throw new ArgumentOutOfRangeException("settings", "Unexpected merge array handling when merging JSON.");
+                    throw new ArgumentOutOfRangeException(nameof(settings), "Unexpected merge array handling when merging JSON.");
             }
         }
     }

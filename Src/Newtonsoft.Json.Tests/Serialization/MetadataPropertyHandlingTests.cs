@@ -28,18 +28,17 @@ using System.Collections.Generic;
 using System.Runtime.Serialization.Formatters;
 using System.Text;
 using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 using Newtonsoft.Json.Tests.TestObjects;
+using Newtonsoft.Json.Tests.TestObjects.Organization;
 using Newtonsoft.Json.Utilities;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
 #else
 using NUnit.Framework;
+
 #endif
 
 namespace Newtonsoft.Json.Tests.Serialization
@@ -70,8 +69,7 @@ namespace Newtonsoft.Json.Tests.Serialization
 
             User u = (User)o;
 
-            Console.WriteLine(u.Name);
-            // James
+            Assert.AreEqual(u.Name, "James");
         }
 
         [Test]
@@ -111,15 +109,14 @@ namespace Newtonsoft.Json.Tests.Serialization
                         PreserveReferencesHandling = PreserveReferencesHandling.All,
                         MetadataPropertyHandling = MetadataPropertyHandling.ReadAhead
                     });
-            }, @"Cannot preserve reference to array or readonly list, or list created from a non-default constructor: System.String[][]. Path '$values', line 3, position 15.");
+            }, @"Cannot preserve reference to array or readonly list, or list created from a non-default constructor: System.String[][]. Path '$values', line 3, position 14.");
         }
 
-#if !NETFX_CORE
         [Test]
         public void SerializeDeserialize_DictionaryContextContainsGuid_DeserializesItemAsGuid()
         {
             const string contextKey = "k1";
-            var someValue = Guid.NewGuid();
+            var someValue = new Guid("5dd2dba0-20c0-49f8-a054-1fa3b0a8d774");
 
             Dictionary<string, Guid> inputContext = new Dictionary<string, Guid>();
             inputContext.Add(contextKey, someValue);
@@ -132,13 +129,15 @@ namespace Newtonsoft.Json.Tests.Serialization
             };
             string serializedString = JsonConvert.SerializeObject(inputContext, jsonSerializerSettings);
 
-            Console.WriteLine(serializedString);
+            StringAssert.AreEqual(@"{
+  ""$type"": """ + ReflectionUtils.GetTypeName(typeof(Dictionary<string, Guid>), 0, DefaultSerializationBinder.Instance) + @""",
+  ""k1"": ""5dd2dba0-20c0-49f8-a054-1fa3b0a8d774""
+}", serializedString);
 
             var deserializedObject = (Dictionary<string, Guid>)JsonConvert.DeserializeObject(serializedString, jsonSerializerSettings);
 
             Assert.AreEqual(someValue, deserializedObject[contextKey]);
         }
-#endif
 
         [Test]
         public void DeserializeGuid()
@@ -162,7 +161,7 @@ namespace Newtonsoft.Json.Tests.Serialization
   ""Longitude"": -117.766684,
   ""TimeStamp"": ""2000-03-01T23:59:59Z"",
   ""Payload"": {
-    ""$type"": ""System.Byte[], mscorlib"",
+    ""$type"": """ + ReflectionUtils.GetTypeName(typeof(byte[]), 0, DefaultSerializationBinder.Instance) + @""",
     ""$value"": ""AAECAwQFBgcICQ==""
   }
 }", jsonString);
@@ -239,7 +238,7 @@ namespace Newtonsoft.Json.Tests.Serialization
                     TypeNameHandling = TypeNameHandling.Objects,
                     MetadataPropertyHandling = MetadataPropertyHandling.ReadAhead
                 });
-            }, "Type specified in JSON 'Newtonsoft.Json.Tests.TestObjects.Employee' was not resolved. Path '$type', line 3, position 56.");
+            }, "Type specified in JSON 'Newtonsoft.Json.Tests.TestObjects.Employee' was not resolved. Path '$type', line 3, position 55.");
         }
 
         [Test]
@@ -257,7 +256,15 @@ namespace Newtonsoft.Json.Tests.Serialization
 
             string json = JsonConvert.SerializeObject(child, Formatting.Indented);
 
-            Console.WriteLine(json);
+            StringAssert.AreEqual(@"{
+  ""_id"": 2,
+  ""Name"": ""Isabell"",
+  ""Father"": {
+    ""blah"": ""blah!"",
+    ""$ref"": null,
+    ""$id"": null
+  }
+}", json);
 
             Dictionary<string, object> result = JsonConvert.DeserializeObject<Dictionary<string, object>>(json, new JsonSerializerSettings
             {
@@ -332,7 +339,7 @@ namespace Newtonsoft.Json.Tests.Serialization
             Assert.IsTrue(JToken.DeepEquals(t1, t2));
         }
 
-#if !(PORTABLE || ASPNETCORE50 || PORTABLE40)
+#if !(PORTABLE || DNXCORE50 || PORTABLE40) || NETSTANDARD2_0
         [Test]
         public void DeserializeGenericObjectListWithTypeName()
         {
@@ -364,7 +371,9 @@ namespace Newtonsoft.Json.Tests.Serialization
             List<object> values = (List<object>)JsonConvert.DeserializeObject(json, typeof(List<object>), new JsonSerializerSettings
             {
                 TypeNameHandling = TypeNameHandling.Objects,
+#pragma warning disable 618
                 TypeNameAssemblyFormat = FormatterAssemblyStyle.Full,
+#pragma warning restore 618
                 MetadataPropertyHandling = MetadataPropertyHandling.ReadAhead
             });
 
@@ -387,7 +396,7 @@ namespace Newtonsoft.Json.Tests.Serialization
         [Test]
         public void WriteListTypeNameForProperty()
         {
-            string listRef = ReflectionUtils.GetTypeName(typeof(List<int>), FormatterAssemblyStyle.Simple, null);
+            string listRef = ReflectionUtils.GetTypeName(typeof(List<int>), TypeNameAssemblyFormatHandling.Simple, null);
 
             TypeNameHandlingTests.TypeNameProperty typeNameProperty = new TypeNameHandlingTests.TypeNameProperty
             {
@@ -517,41 +526,108 @@ namespace Newtonsoft.Json.Tests.Serialization
             JObject o = (JObject)actual.Payload;
             Assert.AreEqual("System.Byte[], mscorlib", (string)o["$type"]);
             Assert.AreEqual("AAECAwQFBgcICQ==", (string)o["$value"]);
-        }
-
-        public class ItemWithTypedPayload
-        {
-            public double Payload { get; set; }
+            Assert.AreEqual(null, o.Parent);
         }
 
         [Test]
-        public void PrimitiveType_MetadataPropertyIgnore_WithType()
+        public void ReadAhead_JObject_NoParent()
         {
-            ItemWithTypedPayload actual = JsonConvert.DeserializeObject<ItemWithTypedPayload>(@"{
+            ItemWithUntypedPayload actual = JsonConvert.DeserializeObject<ItemWithUntypedPayload>(@"{
+  ""Payload"": {}
+}",
+                new JsonSerializerSettings
+                {
+                    MetadataPropertyHandling = MetadataPropertyHandling.ReadAhead
+                });
+
+            JObject o = (JObject)actual.Payload;
+            Assert.AreEqual(null, o.Parent);
+        }
+
+        public class ItemWithJTokens
+        {
+            public JValue Payload1 { get; set; }
+            public JObject Payload2 { get; set; }
+            public JArray Payload3 { get; set; }
+        }
+
+        [Test]
+        public void ReadAhead_TypedJValue_NoParent()
+        {
+            ItemWithJTokens actual = (ItemWithJTokens)JsonConvert.DeserializeObject(@"{
+  ""Payload1"": 1,
+  ""Payload2"": {'prop1':1,'prop2':[2]},
+  ""Payload3"": [1],
+  ""$type"": ""Newtonsoft.Json.Tests.Serialization.MetadataPropertyHandlingTests+ItemWithJTokens, Newtonsoft.Json.Tests""
+}",
+                new JsonSerializerSettings
+                {
+                    MetadataPropertyHandling = MetadataPropertyHandling.ReadAhead,
+                    TypeNameHandling = TypeNameHandling.All
+                });
+
+            Assert.AreEqual(JTokenType.Integer, actual.Payload1.Type);
+            Assert.AreEqual(1, (int)actual.Payload1);
+            Assert.AreEqual(null, actual.Payload1.Parent);
+
+            Assert.AreEqual(JTokenType.Object, actual.Payload2.Type);
+            Assert.AreEqual(1, (int)actual.Payload2["prop1"]);
+            Assert.AreEqual(2, (int)actual.Payload2["prop2"][0]);
+            Assert.AreEqual(null, actual.Payload2.Parent);
+
+            Assert.AreEqual(1, (int)actual.Payload3[0]);
+            Assert.AreEqual(null, actual.Payload3.Parent);
+        }
+
+        [Test]
+        public void ReadAhead_JArray_NoParent()
+        {
+            ItemWithUntypedPayload actual = JsonConvert.DeserializeObject<ItemWithUntypedPayload>(@"{
+  ""Payload"": [1]
+}",
+                new JsonSerializerSettings
+                {
+                    MetadataPropertyHandling = MetadataPropertyHandling.ReadAhead
+                });
+
+            JArray o = (JArray)actual.Payload;
+            Assert.AreEqual(null, o.Parent);
+        }
+
+        public class ItemWithUntypedPayload
+        {
+            public object Payload { get; set; }
+        }
+
+        [Test]
+        public void PrimitiveType_MetadataPropertyIgnore_WithNoType()
+        {
+            ItemWithUntypedPayload actual = JsonConvert.DeserializeObject<ItemWithUntypedPayload>(@"{
   ""Payload"": {
-    ""$type"": ""System.Double, mscorlib"",
+    ""$type"": ""System.Single, mscorlib"",
     ""$value"": ""5""
   }
 }",
-                new JsonSerializerSettings());
+                new JsonSerializerSettings
+                {
+                    TypeNameHandling = TypeNameHandling.Auto
+                });
 
-            Assert.AreEqual(5d, actual.Payload);
+            Assert.AreEqual(5f, actual.Payload);
 
-            ExceptionAssert.Throws<JsonSerializationException>(() =>
-            {
-                JsonConvert.DeserializeObject<ItemWithTypedPayload>(@"{
+            actual = JsonConvert.DeserializeObject<ItemWithUntypedPayload>(@"{
   ""Payload"": {
-    ""$type"": ""System.Double, mscorlib"",
+    ""$type"": ""System.Single, mscorlib"",
     ""$value"": ""5""
   }
 }",
-                    new JsonSerializerSettings
-                    {
-                        MetadataPropertyHandling = MetadataPropertyHandling.Ignore
-                    });
-            }, @"Cannot deserialize the current JSON object (e.g. {""name"":""value""}) into type 'System.Double' because the type requires a JSON primitive value (e.g. string, number, boolean, null) to deserialize correctly.
-To fix this error either change the JSON to a JSON primitive value (e.g. string, number, boolean, null) or change the deserialized type so that it is a normal .NET type (e.g. not a primitive type like integer, not a collection type like an array or List<T>) that can be deserialized from a JSON object. JsonObjectAttribute can also be added to the type to force it to deserialize from a JSON object.
-Path 'Payload.$type', line 3, position 13.");
+                new JsonSerializerSettings
+                {
+                    TypeNameHandling = TypeNameHandling.Auto,
+                    MetadataPropertyHandling = MetadataPropertyHandling.Ignore
+                });
+
+            Assert.IsTrue(actual.Payload is JObject);
         }
 
         [Test]

@@ -30,6 +30,7 @@ using System.Collections.ObjectModel;
 using System.Runtime.Serialization;
 using Newtonsoft.Json.Serialization;
 using Newtonsoft.Json.Tests.TestObjects;
+using Newtonsoft.Json.Tests.TestObjects.Organization;
 
 namespace Newtonsoft.Json.Tests.TestObjects
 {
@@ -59,7 +60,9 @@ namespace Newtonsoft.Json.Tests.TestObjects
             for (int i = 0; i < Count; i++)
             {
                 if (i % 2 == 0)
+                {
                     throw new Exception("Index even: " + i);
+                }
 
                 yield return this[i];
             }

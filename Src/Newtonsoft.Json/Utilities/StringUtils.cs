@@ -28,7 +28,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Globalization;
-#if NET20
+#if !HAVE_LINQ
 using Newtonsoft.Json.Utilities.LinqBridge;
 #else
 using System.Linq;
@@ -69,13 +69,13 @@ namespace Newtonsoft.Json.Utilities
         {
             // leave this a private to force code to use an explicit overload
             // avoids stack memory being reserved for the object array
-            ValidationUtils.ArgumentNotNull(format, "format");
+            ValidationUtils.ArgumentNotNull(format, nameof(format));
 
             return string.Format(provider, format, args);
         }
 
         /// <summary>
-        /// Determines whether the string is all white space. Empty string will return false.
+        /// Determines whether the string is all white space. Empty string will return <c>false</c>.
         /// </summary>
         /// <param name="s">The string to test whether it is all white space.</param>
         /// <returns>
@@ -84,28 +84,24 @@ namespace Newtonsoft.Json.Utilities
         public static bool IsWhiteSpace(string s)
         {
             if (s == null)
-                throw new ArgumentNullException("s");
+            {
+                throw new ArgumentNullException(nameof(s));
+            }
 
             if (s.Length == 0)
+            {
                 return false;
+            }
 
             for (int i = 0; i < s.Length; i++)
             {
                 if (!char.IsWhiteSpace(s[i]))
+                {
                     return false;
+                }
             }
 
             return true;
-        }
-
-        /// <summary>
-        /// Nulls an empty string.
-        /// </summary>
-        /// <param name="s">The string.</param>
-        /// <returns>Null if the string was null, otherwise the string unchanged.</returns>
-        public static string NullEmptyString(string s)
-        {
-            return (string.IsNullOrEmpty(s)) ? null : s;
         }
 
         public static StringWriter CreateStringWriter(int capacity)
@@ -114,14 +110,6 @@ namespace Newtonsoft.Json.Utilities
             StringWriter sw = new StringWriter(sb, CultureInfo.InvariantCulture);
 
             return sw;
-        }
-
-        public static int? GetLength(string value)
-        {
-            if (value == null)
-                return null;
-            else
-                return value.Length;
         }
 
         public static void ToCharAsUnicode(char c, char[] buffer)
@@ -137,11 +125,15 @@ namespace Newtonsoft.Json.Utilities
         public static TSource ForgivingCaseSensitiveFind<TSource>(this IEnumerable<TSource> source, Func<TSource, string> valueSelector, string testValue)
         {
             if (source == null)
-                throw new ArgumentNullException("source");
+            {
+                throw new ArgumentNullException(nameof(source));
+            }
             if (valueSelector == null)
-                throw new ArgumentNullException("valueSelector");
+            {
+                throw new ArgumentNullException(nameof(valueSelector));
+            }
 
-            var caseInsensitiveResults = source.Where(s => string.Equals(valueSelector(s), testValue, StringComparison.OrdinalIgnoreCase));
+            IEnumerable<TSource> caseInsensitiveResults = source.Where(s => string.Equals(valueSelector(s), testValue, StringComparison.OrdinalIgnoreCase));
             if (caseInsensitiveResults.Count() <= 1)
             {
                 return caseInsensitiveResults.SingleOrDefault();
@@ -149,40 +141,143 @@ namespace Newtonsoft.Json.Utilities
             else
             {
                 // multiple results returned. now filter using case sensitivity
-                var caseSensitiveResults = source.Where(s => string.Equals(valueSelector(s), testValue, StringComparison.Ordinal));
+                IEnumerable<TSource> caseSensitiveResults = source.Where(s => string.Equals(valueSelector(s), testValue, StringComparison.Ordinal));
                 return caseSensitiveResults.SingleOrDefault();
             }
         }
 
         public static string ToCamelCase(string s)
         {
-            if (string.IsNullOrEmpty(s))
+            if (string.IsNullOrEmpty(s) || !char.IsUpper(s[0]))
+            {
                 return s;
-
-            if (!char.IsUpper(s[0]))
-                return s;
+            }
 
             char[] chars = s.ToCharArray();
 
             for (int i = 0; i < chars.Length; i++)
             {
+                if (i == 1 && !char.IsUpper(chars[i]))
+                {
+                    break;
+                }
+
                 bool hasNext = (i + 1 < chars.Length);
                 if (i > 0 && hasNext && !char.IsUpper(chars[i + 1]))
-                    break;
+                {
+                    // if the next character is a space, which is not considered uppercase 
+                    // (otherwise we wouldn't be here...)
+                    // we want to ensure that the following:
+                    // 'FOO bar' is rewritten as 'foo bar', and not as 'foO bar'
+                    // The code was written in such a way that the first word in uppercase
+                    // ends when if finds an uppercase letter followed by a lowercase letter.
+                    // now a ' ' (space, (char)32) is considered not upper
+                    // but in that case we still want our current character to become lowercase
+                    if (char.IsSeparator(chars[i + 1]))
+                    {
+                        chars[i] = ToLower(chars[i]);
+                    }
 
-#if !(NETFX_CORE || PORTABLE)
-                chars[i] = char.ToLower(chars[i], CultureInfo.InvariantCulture);
-#else
-                chars[i] = char.ToLowerInvariant(chars[i]);
-#endif
+                    break;
+                }
+
+                chars[i] = ToLower(chars[i]);
             }
 
             return new string(chars);
         }
 
+        private static char ToLower(char c)
+        {
+#if HAVE_CHAR_TO_STRING_WITH_CULTURE
+            c = char.ToLower(c, CultureInfo.InvariantCulture);
+#else
+            c = char.ToLowerInvariant(c);
+#endif
+            return c;
+        }
+
+        internal enum SnakeCaseState
+        {
+            Start,
+            Lower,
+            Upper,
+            NewWord
+        }
+
+        public static string ToSnakeCase(string s)
+        {
+            if (string.IsNullOrEmpty(s))
+            {
+                return s;
+            }
+
+            StringBuilder sb = new StringBuilder();
+            SnakeCaseState state = SnakeCaseState.Start;
+
+            for (int i = 0; i < s.Length; i++)
+            {
+                if (s[i] == ' ')
+                {
+                    if (state != SnakeCaseState.Start)
+                    {
+                        state = SnakeCaseState.NewWord;
+                    }
+                }
+                else if (char.IsUpper(s[i]))
+                {
+                    switch (state)
+                    {
+                        case SnakeCaseState.Upper:
+                            bool hasNext = (i + 1 < s.Length);
+                            if (i > 0 && hasNext)
+                            {
+                                char nextChar = s[i + 1];
+                                if (!char.IsUpper(nextChar) && nextChar != '_')
+                                {
+                                    sb.Append('_');
+                                }
+                            }
+                            break;
+                        case SnakeCaseState.Lower:
+                        case SnakeCaseState.NewWord:
+                            sb.Append('_');
+                            break;
+                    }
+
+                    char c;
+#if HAVE_CHAR_TO_LOWER_WITH_CULTURE
+                    c = char.ToLower(s[i], CultureInfo.InvariantCulture);
+#else
+                    c = char.ToLowerInvariant(s[i]);
+#endif
+                    sb.Append(c);
+
+                    state = SnakeCaseState.Upper;
+                }
+                else if (s[i] == '_')
+                {
+                    sb.Append('_');
+                    state = SnakeCaseState.Start;
+                }
+                else
+                {
+                    if (state == SnakeCaseState.NewWord)
+                    {
+                        sb.Append('_');
+                    }
+
+                    sb.Append(s[i]);
+                    state = SnakeCaseState.Lower;
+                }
+            }
+
+            return sb.ToString();
+        }
+
         public static bool IsHighSurrogate(char c)
         {
-#if !(PORTABLE40 || PORTABLE)
+#if HAVE_UNICODE_SURROGATE_DETECTION
             return char.IsHighSurrogate(c);
 #else
             return (c >= 55296 && c <= 56319);
@@ -191,7 +286,7 @@ namespace Newtonsoft.Json.Utilities
 
         public static bool IsLowSurrogate(char c)
         {
-#if !(PORTABLE40 || PORTABLE)
+#if HAVE_UNICODE_SURROGATE_DETECTION
             return char.IsLowSurrogate(c);
 #else
             return (c >= 56320 && c <= 57343);
@@ -206,6 +301,44 @@ namespace Newtonsoft.Json.Utilities
         public static bool EndsWith(this string source, char value)
         {
             return (source.Length > 0 && source[source.Length - 1] == value);
+        }
+
+        public static string Trim(this string s, int start, int length)
+        {
+            // References: https://referencesource.microsoft.com/#mscorlib/system/string.cs,2691
+            // https://referencesource.microsoft.com/#mscorlib/system/string.cs,1226
+            if (s == null)
+            {
+                throw new ArgumentNullException();
+            }
+            if (start < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(start));
+            }
+            if (length < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(length));
+            }
+            int end = start + length - 1;
+            if (end >= s.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(length));
+            }
+            for (; start < end; start++)
+            {
+                if (!char.IsWhiteSpace(s[start]))
+                {
+                    break;
+                }
+            }
+            for (; end >= start; end--)
+            {
+                if (!char.IsWhiteSpace(s[end]))
+                {
+                    break;
+                }
+            }
+            return s.Substring(start, end - start + 1);
         }
     }
 }

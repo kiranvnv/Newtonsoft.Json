@@ -26,11 +26,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
@@ -435,8 +431,7 @@ Parameter name: index");
             }
         }
 
-
-#if !(NETFX_CORE || PORTABLE || ASPNETCORE50 || PORTABLE40)
+#if !(PORTABLE || DNXCORE50 || PORTABLE40) || NETSTANDARD2_0
         [Test]
         public void ITypedListGetItemProperties()
         {
@@ -471,7 +466,7 @@ Parameter name: index");
             {
                 JArray a = new JArray();
                 a["badvalue"] = new JValue(3);
-            }, @"Set JArray values with invalid key value: ""badvalue"". Array position index expected.");
+            }, @"Set JArray values with invalid key value: ""badvalue"". Int32 array index expected.");
         }
 
         [Test]
@@ -526,7 +521,7 @@ Parameter name: index");
 ""Large""
 ], 987987";
 
-            ExceptionAssert.Throws<JsonReaderException>(() => { JArray.Parse(json); }, "Additional text encountered after finished reading JSON content: ,. Path '', line 5, position 2.");
+            ExceptionAssert.Throws<JsonReaderException>(() => { JArray.Parse(json); }, "Additional text encountered after finished reading JSON content: ,. Path '', line 5, position 1.");
         }
 
         [Test]
@@ -543,6 +538,98 @@ Parameter name: index");
             decks = (JArray)JObject.Parse(json)["decks"];
             l = decks.ToList();
             Assert.AreEqual(1, l.Count);
+        }
+
+        [Test]
+        public void Parse_NoComments()
+        {
+            string json = "[1,2/*comment*/,3]";
+
+            JArray a = JArray.Parse(json, new JsonLoadSettings());
+
+            Assert.AreEqual(3, a.Count);
+            Assert.AreEqual(1, (int)a[0]);
+            Assert.AreEqual(2, (int)a[1]);
+            Assert.AreEqual(3, (int)a[2]);
+
+            a = JArray.Parse(json, new JsonLoadSettings
+            {
+                CommentHandling = CommentHandling.Ignore
+            });
+
+            Assert.AreEqual(3, a.Count);
+            Assert.AreEqual(1, (int)a[0]);
+            Assert.AreEqual(2, (int)a[1]);
+            Assert.AreEqual(3, (int)a[2]);
+
+            a = JArray.Parse(json, new JsonLoadSettings
+            {
+                CommentHandling = CommentHandling.Load
+            });
+
+            Assert.AreEqual(4, a.Count);
+            Assert.AreEqual(1, (int)a[0]);
+            Assert.AreEqual(2, (int)a[1]);
+            Assert.AreEqual(JTokenType.Comment, a[2].Type);
+            Assert.AreEqual(3, (int)a[3]);
+        }
+
+        [Test]
+        public void Parse_ExcessiveContentJustComments()
+        {
+            string json = @"[1,2,3]/*comment*/
+//Another comment.";
+
+            JArray a = JArray.Parse(json);
+
+            Assert.AreEqual(3, a.Count);
+            Assert.AreEqual(1, (int)a[0]);
+            Assert.AreEqual(2, (int)a[1]);
+            Assert.AreEqual(3, (int)a[2]);
+        }
+
+        [Test]
+        public void Parse_ExcessiveContent()
+        {
+            string json = @"[1,2,3]/*comment*/
+//Another comment.
+[]";
+
+            ExceptionAssert.Throws<JsonReaderException>(() => JArray.Parse(json),
+                "Additional text encountered after finished reading JSON content: [. Path '', line 3, position 0.");
+        }
+
+        [Test]
+        public void Parse_LineInfo()
+        {
+            string json = "[1,2,3]";
+
+            JArray a = JArray.Parse(json, new JsonLoadSettings());
+
+            Assert.AreEqual(true, ((IJsonLineInfo)a).HasLineInfo());
+            Assert.AreEqual(true, ((IJsonLineInfo)a[0]).HasLineInfo());
+            Assert.AreEqual(true, ((IJsonLineInfo)a[1]).HasLineInfo());
+            Assert.AreEqual(true, ((IJsonLineInfo)a[2]).HasLineInfo());
+
+            a = JArray.Parse(json, new JsonLoadSettings
+            {
+                LineInfoHandling = LineInfoHandling.Ignore
+            });
+
+            Assert.AreEqual(false, ((IJsonLineInfo)a).HasLineInfo());
+            Assert.AreEqual(false, ((IJsonLineInfo)a[0]).HasLineInfo());
+            Assert.AreEqual(false, ((IJsonLineInfo)a[1]).HasLineInfo());
+            Assert.AreEqual(false, ((IJsonLineInfo)a[2]).HasLineInfo());
+
+            a = JArray.Parse(json, new JsonLoadSettings
+            {
+                LineInfoHandling = LineInfoHandling.Load
+            });
+
+            Assert.AreEqual(true, ((IJsonLineInfo)a).HasLineInfo());
+            Assert.AreEqual(true, ((IJsonLineInfo)a[0]).HasLineInfo());
+            Assert.AreEqual(true, ((IJsonLineInfo)a[1]).HasLineInfo());
+            Assert.AreEqual(true, ((IJsonLineInfo)a[2]).HasLineInfo());
         }
     }
 }

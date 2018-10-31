@@ -31,11 +31,7 @@ using Newtonsoft.Json.Bson;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Serialization;
 using Newtonsoft.Json.Utilities;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
@@ -52,6 +48,18 @@ namespace Newtonsoft.Json.Tests.Converters
         public class RegexTestClass
         {
             public Regex Regex { get; set; }
+        }
+
+        [Test]
+        public void WriteJsonNull()
+        {
+            StringWriter sw = new StringWriter();
+            JsonTextWriter jsonWriter = new JsonTextWriter(sw);
+
+            RegexConverter converter = new RegexConverter();
+            converter.WriteJson(jsonWriter, null, null);
+
+            StringAssert.AreEqual(@"null", sw.ToString());
         }
 
         [Test]
@@ -74,7 +82,9 @@ namespace Newtonsoft.Json.Tests.Converters
 
             string json = JsonConvert.SerializeObject(regex, Formatting.Indented, new JsonSerializerSettings
             {
+#pragma warning disable CS0618 // Type or member is obsolete
                 Converters = { new RegexConverter(), new StringEnumConverter() { CamelCaseText = true } },
+#pragma warning restore CS0618 // Type or member is obsolete
                 ContractResolver = new CamelCasePropertyNamesContractResolver()
             });
 
@@ -119,6 +129,68 @@ namespace Newtonsoft.Json.Tests.Converters
         }
 
         [Test]
+        public void DeserializeStringRegex()
+        {
+            string json = @"{
+  ""Regex"": ""\/abc\/""
+}";
+
+            RegexTestClass c = JsonConvert.DeserializeObject<RegexTestClass>(json, new JsonSerializerSettings
+            {
+                Converters = { new RegexConverter() }
+            });
+
+            Assert.AreEqual("abc", c.Regex.ToString());
+            Assert.AreEqual(RegexOptions.None, c.Regex.Options);
+        }
+
+        [Test]
+        public void DeserializeStringRegex_NoStartSlash_Error()
+        {
+            string json = @"{
+  ""Regex"": ""abc\/""
+}";
+
+            ExceptionAssert.Throws<JsonSerializationException>(
+                () => JsonConvert.DeserializeObject<RegexTestClass>(json, new JsonSerializerSettings
+                {
+                    Converters = { new RegexConverter() }
+                }),
+                "Regex pattern must be enclosed by slashes. Path 'Regex', line 2, position 18.");
+        }
+
+        [Test]
+        public void DeserializeStringRegex_NoEndSlash_Error()
+        {
+            string json = @"{
+  ""Regex"": ""\/abc""
+}";
+
+            ExceptionAssert.Throws<JsonSerializationException>(
+                () => JsonConvert.DeserializeObject<RegexTestClass>(json, new JsonSerializerSettings
+                {
+                    Converters = {new RegexConverter()}
+                }),
+                "Regex pattern must be enclosed by slashes. Path 'Regex', line 2, position 18.");
+        }
+
+        [Test]
+        public void DeserializeStringRegex_NoStartAndEndSlashes_Error()
+        {
+            string json = @"{
+  ""Regex"": ""\/abc""
+}";
+
+            ExceptionAssert.Throws<JsonSerializationException>(
+                () => JsonConvert.DeserializeObject<RegexTestClass>(json, new JsonSerializerSettings
+                {
+                    Converters = { new RegexConverter() }
+                }),
+                "Regex pattern must be enclosed by slashes. Path 'Regex', line 2, position 18.");
+        }
+
+#pragma warning disable 618
+        [Test]
         public void SerializeToBson()
         {
             Regex regex = new Regex("abc", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -134,19 +206,6 @@ namespace Newtonsoft.Json.Tests.Converters
             string bson = BytesToHex(ms.ToArray());
 
             Assert.AreEqual(expected, bson);
-        }
-
-        [Test]
-        public void DeserializeFromText()
-        {
-            string json = @"{
-  ""Pattern"": ""abc"",
-  ""Options"": 513
-}";
-
-            Regex newRegex = JsonConvert.DeserializeObject<Regex>(json, new RegexConverter());
-            Assert.AreEqual("abc", newRegex.ToString());
-            Assert.AreEqual(RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, newRegex.Options);
         }
 
         [Test]
@@ -213,6 +272,20 @@ namespace Newtonsoft.Json.Tests.Converters
             Assert.AreEqual("/", c.Regex.ToString());
             Assert.AreEqual(RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Multiline | RegexOptions.ExplicitCapture, c.Regex.Options);
         }
+#pragma warning restore 618
+
+        [Test]
+        public void DeserializeFromText()
+        {
+            string json = @"{
+  ""Pattern"": ""abc"",
+  ""Options"": 513
+}";
+
+            Regex newRegex = JsonConvert.DeserializeObject<Regex>(json, new RegexConverter());
+            Assert.AreEqual("abc", newRegex.ToString());
+            Assert.AreEqual(RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, newRegex.Options);
+        }
 
         [Test]
         public void ConvertEmptyRegexJson()
@@ -231,6 +304,21 @@ namespace Newtonsoft.Json.Tests.Converters
             RegexTestClass newRegex = JsonConvert.DeserializeObject<RegexTestClass>(json, new RegexConverter());
             Assert.AreEqual("", newRegex.Regex.ToString());
             Assert.AreEqual(RegexOptions.None, newRegex.Regex.Options);
+        }
+
+        public class SimpleClassWithRegex
+        {
+            public Regex RegProp { get; set; }
+        }
+
+        [Test]
+        public void DeserializeNullRegex()
+        {
+            string json = JsonConvert.SerializeObject(new SimpleClassWithRegex { RegProp = null });
+            Assert.AreEqual(@"{""RegProp"":null}", json);
+
+            SimpleClassWithRegex obj = JsonConvert.DeserializeObject<SimpleClassWithRegex>(json);
+            Assert.AreEqual(null, obj.RegProp);
         }
     }
 }

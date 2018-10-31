@@ -23,31 +23,37 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
-#if !(NET35 || NET20 || ASPNETCORE50)
+#if !(NET40 || NET35 || NET20 || DNXCORE50 || PORTABLE || PORTABLE40) || NETSTANDARD1_0 || NETSTANDARD1_3 || NETSTANDARD2_0
 using Autofac;
 using Newtonsoft.Json.Serialization;
 using Newtonsoft.Json.Tests.TestObjects;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Serialization;
 using System.Text;
 using System.Threading.Tasks;
+using Autofac.Core;
+using Autofac.Core.Activators.Reflection;
 using Microsoft.FSharp.Collections;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+using Newtonsoft.Json.Tests.TestObjects.Organization;
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
 #else
 using NUnit.Framework;
+
 #endif
 
 namespace Newtonsoft.Json.Tests.Serialization
 {
-    public interface ITaskRepository
+    public interface IBase
+    {
+        DateTime CreatedOn { get; set; }
+    }
+
+    public interface ITaskRepository : IBase
     {
         string ConnectionString { get; set; }
     }
@@ -58,7 +64,12 @@ namespace Newtonsoft.Json.Tests.Serialization
         string Level { get; set; }
     }
 
-    public class TaskRepository : ITaskRepository
+    public class Base : IBase
+    {
+        public DateTime CreatedOn { get; set; }
+    }
+
+    public class TaskRepository : Base, ITaskRepository
     {
         public string ConnectionString { get; set; }
     }
@@ -115,6 +126,30 @@ namespace Newtonsoft.Json.Tests.Serialization
         }
     }
 
+#if !NET20
+    [DataContract]
+    public class User
+    {
+        [DataMember(Name = "first_name")]
+        public string FirstName { get; set; }
+
+        [DataMember(Name = "company")]
+        public ICompany Company { get; set; }
+    }
+
+    public interface ICompany
+    {
+        string CompanyName { get; set; }
+    }
+
+    [DataContract]
+    public class Company : ICompany
+    {
+        [DataMember(Name = "company_name")]
+        public string CompanyName { get; set; }
+    }
+#endif
+
     public class AutofacContractResolver : DefaultContractResolver
     {
         private readonly IContainer _container;
@@ -126,19 +161,56 @@ namespace Newtonsoft.Json.Tests.Serialization
 
         protected override JsonObjectContract CreateObjectContract(Type objectType)
         {
-            JsonObjectContract contract = base.CreateObjectContract(objectType);
-
             // use Autofac to create types that have been registered with it
             if (_container.IsRegistered(objectType))
+            {
+                JsonObjectContract contract = ResolveContact(objectType);
                 contract.DefaultCreator = () => _container.Resolve(objectType);
 
-            return contract;
+                return contract;
+            }
+
+            return base.CreateObjectContract(objectType);
+        }
+
+        private JsonObjectContract ResolveContact(Type objectType)
+        {
+            // attempt to create the contact from the resolved type
+            IComponentRegistration registration;
+            if (_container.ComponentRegistry.TryGetRegistration(new TypedService(objectType), out registration))
+            {
+                Type viewType = (registration.Activator as ReflectionActivator)?.LimitType;
+                if (viewType != null)
+                {
+                    return base.CreateObjectContract(viewType);
+                }
+            }
+
+            // fall back to using the registered type
+            return base.CreateObjectContract(objectType);
         }
     }
 
     [TestFixture]
     public class DependencyInjectionTests : TestFixtureBase
     {
+        [Test]
+        public void ResolveContractFromAutofac()
+        {
+            ContainerBuilder builder = new ContainerBuilder();
+            builder.RegisterType<Company>().As<ICompany>();
+            IContainer container = builder.Build();
+
+            AutofacContractResolver resolver = new AutofacContractResolver(container);
+
+            User user = JsonConvert.DeserializeObject<User>("{'company':{'company_name':'Company name!'}}", new JsonSerializerSettings
+            {
+                ContractResolver = resolver
+            });
+
+            Assert.AreEqual("Company name!", user.Company.CompanyName);
+        }
+
         [Test]
         public void CreateObjectWithParameters()
         {
@@ -202,7 +274,8 @@ namespace Newtonsoft.Json.Tests.Serialization
                     'Level': 'Debug'
                 },
                 'Repository': {
-                    'ConnectionString': 'server=.'
+                    'ConnectionString': 'server=.',
+                    'CreatedOn': '2015-04-01 20:00'
                 },
                 'People': [
                     {
@@ -216,13 +289,14 @@ namespace Newtonsoft.Json.Tests.Serialization
                     'Name': 'Name3!'
                 }
             }", new JsonSerializerSettings
-              {
-                  ContractResolver = contractResolver
-              });
+            {
+                ContractResolver = contractResolver
+            });
 
             Assert.IsNotNull(o);
             Assert.IsNotNull(o.Logger);
             Assert.IsNotNull(o.Repository);
+            Assert.AreEqual(o.Repository.CreatedOn, DateTime.Parse("2015-04-01 20:00"));
 
             Assert.AreEqual(2, count);
 
@@ -236,4 +310,5 @@ namespace Newtonsoft.Json.Tests.Serialization
         }
     }
 }
+
 #endif

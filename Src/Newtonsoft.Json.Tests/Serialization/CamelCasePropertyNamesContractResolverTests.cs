@@ -26,11 +26,7 @@
 using System;
 using System.Collections.Generic;
 using Newtonsoft.Json.Serialization;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
@@ -38,6 +34,7 @@ using Assert = Newtonsoft.Json.Tests.XUnitAssert;
 using NUnit.Framework;
 #endif
 using Newtonsoft.Json.Tests.TestObjects;
+using Newtonsoft.Json.Tests.TestObjects.Organization;
 using Newtonsoft.Json.Linq;
 using System.Reflection;
 using Newtonsoft.Json.Utilities;
@@ -47,6 +44,23 @@ namespace Newtonsoft.Json.Tests.Serialization
     [TestFixture]
     public class CamelCasePropertyNamesContractResolverTests : TestFixtureBase
     {
+        [Test]
+        public void EnsureContractsShared()
+        {
+            CamelCasePropertyNamesContractResolver resolver1 = new CamelCasePropertyNamesContractResolver();
+            var contract1 = (JsonObjectContract)resolver1.ResolveContract(typeof(CamelCasePropertyNamesContractResolverTests));
+
+            CamelCasePropertyNamesContractResolver resolver2 = new CamelCasePropertyNamesContractResolver();
+            var contract2 = (JsonObjectContract)resolver2.ResolveContract(typeof(CamelCasePropertyNamesContractResolverTests));
+
+            Assert.IsTrue(ReferenceEquals(contract1, contract2));
+
+            var nt1 = resolver1.GetNameTable();
+            var nt2 = resolver2.GetNameTable();
+
+            Assert.IsTrue(ReferenceEquals(nt1, nt2));
+        }
+
         [Test]
         public void JsonConvertSerializerSettings()
         {
@@ -105,7 +119,7 @@ namespace Newtonsoft.Json.Tests.Serialization
             string json = o.ToString();
         }
 
-#if !(NETFX_CORE || PORTABLE || ASPNETCORE50 || PORTABLE40)
+#if !(PORTABLE || PORTABLE40) || NETSTANDARD2_0
 #pragma warning disable 618
         [Test]
         public void MemberSearchFlags()

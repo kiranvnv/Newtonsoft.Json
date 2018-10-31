@@ -23,14 +23,11 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
-#if !(NET35 || NET20 || PORTABLE40)
+#if HAVE_DYNAMIC
 using System;
-using System.Collections.Generic;
 using System.Dynamic;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using Newtonsoft.Json.Utilities;
-using System.Collections;
 
 namespace Newtonsoft.Json.Serialization
 {
@@ -43,7 +40,7 @@ namespace Newtonsoft.Json.Serialization
         /// Gets the object's properties.
         /// </summary>
         /// <value>The object's properties.</value>
-        public JsonPropertyCollection Properties { get; private set; }
+        public JsonPropertyCollection Properties { get; }
 
         /// <summary>
         /// Gets or sets the property name resolver.
@@ -85,7 +82,7 @@ namespace Newtonsoft.Json.Serialization
 
         internal bool TryGetMember(IDynamicMetaObjectProvider dynamicProvider, string name, out object value)
         {
-            ValidationUtils.ArgumentNotNull(dynamicProvider, "dynamicProvider");
+            ValidationUtils.ArgumentNotNull(dynamicProvider, nameof(dynamicProvider));
 
             CallSite<Func<CallSite, object, object>> callSite = _callSiteGetters.Get(name);
 
@@ -105,7 +102,7 @@ namespace Newtonsoft.Json.Serialization
 
         internal bool TrySetMember(IDynamicMetaObjectProvider dynamicProvider, string name, object value)
         {
-            ValidationUtils.ArgumentNotNull(dynamicProvider, "dynamicProvider");
+            ValidationUtils.ArgumentNotNull(dynamicProvider, nameof(dynamicProvider));
 
             CallSite<Func<CallSite, object, object, object>> callSite = _callSiteSetters.Get(name);
 

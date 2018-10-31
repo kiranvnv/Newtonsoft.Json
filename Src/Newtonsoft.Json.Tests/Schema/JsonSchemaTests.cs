@@ -23,21 +23,19 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
+#pragma warning disable 618
 using System;
 using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
 #else
 using NUnit.Framework;
+
 #endif
 
 namespace Newtonsoft.Json.Tests.Schema
@@ -151,7 +149,6 @@ namespace Newtonsoft.Json.Tests.Schema
   }
 }", newJson);
 
-
             json = @"{
   ""type"":""object"",
   ""extends"":[{""type"":""string""}],
@@ -175,7 +172,6 @@ namespace Newtonsoft.Json.Tests.Schema
     ""type"": ""string""
   }
 }", newJson);
-
 
             json = @"{
   ""type"":""object"",
@@ -585,3 +581,5 @@ namespace Newtonsoft.Json.Tests.Schema
         }
     }
 }
+
+#pragma warning restore 618

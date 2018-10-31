@@ -24,6 +24,7 @@
 #endregion
 
 #if !(NET20 || NET35)
+
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -38,14 +39,11 @@ namespace Newtonsoft.Json.Utilities
     {
         private static readonly ExpressionReflectionDelegateFactory _instance = new ExpressionReflectionDelegateFactory();
 
-        internal static ReflectionDelegateFactory Instance
-        {
-            get { return _instance; }
-        }
+        internal static ReflectionDelegateFactory Instance => _instance;
 
-        public override ObjectConstructor<object> CreateParametrizedConstructor(MethodBase method)
+        public override ObjectConstructor<object> CreateParameterizedConstructor(MethodBase method)
         {
-            ValidationUtils.ArgumentNotNull(method, "method");
+            ValidationUtils.ArgumentNotNull(method, nameof(method));
 
             Type type = typeof(object);
 
@@ -61,7 +59,7 @@ namespace Newtonsoft.Json.Utilities
 
         public override MethodCall<T, object> CreateMethodCall<T>(MethodBase method)
         {
-            ValidationUtils.ArgumentNotNull(method, "method");
+            ValidationUtils.ArgumentNotNull(method, nameof(method));
 
             Type type = typeof(object);
 
@@ -87,76 +85,73 @@ namespace Newtonsoft.Json.Utilities
         {
             ParameterInfo[] parametersInfo = method.GetParameters();
 
-            Expression[] argsExpression = new Expression[parametersInfo.Length];
-            IList<ByRefParameter> refParameterMap = new List<ByRefParameter>();
-
-            for (int i = 0; i < parametersInfo.Length; i++)
+            Expression[] argsExpression;
+            IList<ByRefParameter> refParameterMap;
+            if (parametersInfo.Length == 0)
             {
-                ParameterInfo parameter = parametersInfo[i];
-                Type parameterType = parameter.ParameterType;
-                bool isByRef = false;
-                if (parameterType.IsByRef)
+                argsExpression = CollectionUtils.ArrayEmpty<Expression>();
+                refParameterMap = CollectionUtils.ArrayEmpty<ByRefParameter>();
+            }
+            else
+            {
+                argsExpression = new Expression[parametersInfo.Length];
+                refParameterMap = new List<ByRefParameter>();
+
+                for (int i = 0; i < parametersInfo.Length; i++)
                 {
-                    parameterType = parameterType.GetElementType();
-                    isByRef = true;
-                }
-
-                Expression indexExpression = Expression.Constant(i);
-
-                Expression paramAccessorExpression = Expression.ArrayIndex(argsParameterExpression, indexExpression);
-
-                Expression argExpression;
-
-                if (parameterType.IsValueType())
-                {
-                    BinaryExpression ensureValueTypeNotNull = Expression.Coalesce(paramAccessorExpression, Expression.New(parameterType));
-
-                    argExpression = EnsureCastExpression(ensureValueTypeNotNull, parameterType);
-                }
-                else
-                {
-                    argExpression = EnsureCastExpression(paramAccessorExpression, parameterType);
-                }
-
-                if (isByRef)
-                {
-                    ParameterExpression variable = Expression.Variable(parameterType);
-                    refParameterMap.Add(new ByRefParameter
+                    ParameterInfo parameter = parametersInfo[i];
+                    Type parameterType = parameter.ParameterType;
+                    bool isByRef = false;
+                    if (parameterType.IsByRef)
                     {
-                        Value = argExpression,
-                        Variable = variable,
-                        IsOut = parameter.IsOut
-                    });
+                        parameterType = parameterType.GetElementType();
+                        isByRef = true;
+                    }
 
-                    argExpression = variable;
+                    Expression indexExpression = Expression.Constant(i);
+
+                    Expression paramAccessorExpression = Expression.ArrayIndex(argsParameterExpression, indexExpression);
+
+                    Expression argExpression = EnsureCastExpression(paramAccessorExpression, parameterType, !isByRef);
+
+                    if (isByRef)
+                    {
+                        ParameterExpression variable = Expression.Variable(parameterType);
+                        refParameterMap.Add(new ByRefParameter {Value = argExpression, Variable = variable, IsOut = parameter.IsOut});
+
+                        argExpression = variable;
+                    }
+
+                    argsExpression[i] = argExpression;
                 }
-
-                argsExpression[i] = argExpression;
             }
 
             Expression callExpression;
             if (method.IsConstructor)
             {
-                callExpression = Expression.New((ConstructorInfo) method, argsExpression);
+                callExpression = Expression.New((ConstructorInfo)method, argsExpression);
             }
             else if (method.IsStatic)
             {
-                callExpression = Expression.Call((MethodInfo) method, argsExpression);
+                callExpression = Expression.Call((MethodInfo)method, argsExpression);
             }
             else
             {
                 Expression readParameter = EnsureCastExpression(targetParameterExpression, method.DeclaringType);
 
-                callExpression = Expression.Call(readParameter, (MethodInfo) method, argsExpression);
+                callExpression = Expression.Call(readParameter, (MethodInfo)method, argsExpression);
             }
 
-            if (method is MethodInfo)
+            if (method is MethodInfo m)
             {
-                MethodInfo m = (MethodInfo) method;
-                if (m.ReturnType != typeof (void))
+                if (m.ReturnType != typeof(void))
+                {
                     callExpression = EnsureCastExpression(callExpression, type);
+                }
                 else
+                {
                     callExpression = Expression.Block(callExpression, Expression.Constant(null));
+                }
             }
             else
             {
@@ -170,7 +165,9 @@ namespace Newtonsoft.Json.Utilities
                 foreach (ByRefParameter p in refParameterMap)
                 {
                     if (!p.IsOut)
+                    {
                         bodyExpressions.Add(Expression.Assign(p.Variable, p.Value));
+                    }
 
                     variableExpressions.Add(p.Variable);
                 }
@@ -189,7 +186,9 @@ namespace Newtonsoft.Json.Utilities
 
             // avoid error from expressions compiler because of abstract class
             if (type.IsAbstract())
+            {
                 return () => (T)Activator.CreateInstance(type);
+            }
 
             try
             {
@@ -214,7 +213,7 @@ namespace Newtonsoft.Json.Utilities
 
         public override Func<T, object> CreateGet<T>(PropertyInfo propertyInfo)
         {
-            ValidationUtils.ArgumentNotNull(propertyInfo, "propertyInfo");
+            ValidationUtils.ArgumentNotNull(propertyInfo, nameof(propertyInfo));
 
             Type instanceType = typeof(T);
             Type resultType = typeof(object);
@@ -245,7 +244,7 @@ namespace Newtonsoft.Json.Utilities
 
         public override Func<T, object> CreateGet<T>(FieldInfo fieldInfo)
         {
-            ValidationUtils.ArgumentNotNull(fieldInfo, "fieldInfo");
+            ValidationUtils.ArgumentNotNull(fieldInfo, nameof(fieldInfo));
 
             ParameterExpression sourceParameter = Expression.Parameter(typeof(T), "source");
 
@@ -269,12 +268,14 @@ namespace Newtonsoft.Json.Utilities
 
         public override Action<T, object> CreateSet<T>(FieldInfo fieldInfo)
         {
-            ValidationUtils.ArgumentNotNull(fieldInfo, "fieldInfo");
+            ValidationUtils.ArgumentNotNull(fieldInfo, nameof(fieldInfo));
 
             // use reflection for structs
             // expression doesn't correctly set value
             if (fieldInfo.DeclaringType.IsValueType() || fieldInfo.IsInitOnly)
+            {
                 return LateBoundReflectionDelegateFactory.Instance.CreateSet<T>(fieldInfo);
+            }
 
             ParameterExpression sourceParameterExpression = Expression.Parameter(typeof(T), "source");
             ParameterExpression valueParameterExpression = Expression.Parameter(typeof(object), "value");
@@ -303,12 +304,14 @@ namespace Newtonsoft.Json.Utilities
 
         public override Action<T, object> CreateSet<T>(PropertyInfo propertyInfo)
         {
-            ValidationUtils.ArgumentNotNull(propertyInfo, "propertyInfo");
+            ValidationUtils.ArgumentNotNull(propertyInfo, nameof(propertyInfo));
 
             // use reflection for structs
             // expression doesn't correctly set value
             if (propertyInfo.DeclaringType.IsValueType())
+            {
                 return LateBoundReflectionDelegateFactory.Instance.CreateSet<T>(propertyInfo);
+            }
 
             Type instanceType = typeof(T);
             Type valueType = typeof(object);
@@ -337,14 +340,40 @@ namespace Newtonsoft.Json.Utilities
             Action<T, object> compiled = (Action<T, object>)lambdaExpression.Compile();
             return compiled;
         }
-
-        private Expression EnsureCastExpression(Expression expression, Type targetType)
+        
+        private Expression EnsureCastExpression(Expression expression, Type targetType, bool allowWidening = false)
         {
             Type expressionType = expression.Type;
-
+            
             // check if a cast or conversion is required
             if (expressionType == targetType || (!expressionType.IsValueType() && targetType.IsAssignableFrom(expressionType)))
+            {
                 return expression;
+            }
+
+            if (targetType.IsValueType())
+            {
+                Expression convert = Expression.Unbox(expression, targetType);
+
+                if (allowWidening && targetType.IsPrimitive())
+                {
+                    MethodInfo toTargetTypeMethod = typeof(Convert)
+                        .GetMethod("To" + targetType.Name, new[] { typeof(object) });
+
+                    if (toTargetTypeMethod != null)
+                    {
+                        convert = Expression.Condition(
+                            Expression.TypeIs(expression, targetType),
+                            convert,
+                            Expression.Call(toTargetTypeMethod, expression));
+                    }
+                }
+                
+                return Expression.Condition(
+                    Expression.Equal(expression, Expression.Constant(null, typeof(object))),
+                    Expression.Default(targetType), 
+                    convert);
+            }
 
             return Expression.Convert(expression, targetType);
         }

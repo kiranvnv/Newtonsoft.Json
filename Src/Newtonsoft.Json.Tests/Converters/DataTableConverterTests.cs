@@ -23,33 +23,158 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
+#if !(PORTABLE || DNXCORE50 || PORTABLE40) || NETSTANDARD2_0
 using System.IO;
 using System.Text;
 using Newtonsoft.Json.Bson;
+using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
-#if !(NETFX_CORE || PORTABLE || ASPNETCORE50 || PORTABLE40)
 using System;
 using System.Collections.Generic;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
 #else
 using NUnit.Framework;
 #endif
-#if !NETFX_CORE
 using System.Data;
-#endif
+using System.Data.SqlTypes;
+using System.Linq;
 using Newtonsoft.Json.Tests.TestObjects;
+#if !(NET20 || NET35)
+using System.Numerics;
+#endif
 
 namespace Newtonsoft.Json.Tests.Converters
 {
     public class DataTableConverterTests : TestFixtureBase
     {
+        [Test]
+        public void DeserializeEmptyNestedArray()
+        {
+            var jsonString2 = @"[{""col1"": []}]";
+
+            DataTable dt = JsonConvert.DeserializeObject<DataTable>(jsonString2);
+
+            Assert.AreEqual(1, dt.Columns.Count);
+            Assert.AreEqual(typeof(string[]), dt.Columns["col1"].DataType);
+
+            Assert.AreEqual(1, dt.Rows.Count);
+            Assert.IsNotNull(dt.Rows[0]["col1"]);
+
+            object[] value = (object[])dt.Rows[0]["col1"];
+            Assert.AreEqual(0, value.Length);
+        }
+
+#if !(NET20 || NET35)
+        [Test]
+        public void SerializeNullValues()
+        {
+            DataTable dt = new DataTable();
+            List<Type> types = new List<Type>
+            {
+                typeof(TimeSpan),
+                typeof(char[]),
+                typeof(Type),
+                typeof(Object),
+                typeof(byte[]),
+                typeof(Uri),
+                typeof(Guid),
+                typeof(BigInteger)
+            };
+
+            foreach (var ss in types)
+            {
+                dt.Columns.Add(ss.Name, ss);
+            }
+
+            dt.Rows.Add(types.Select(t => (object)null).ToArray());
+
+            StringWriter sw = new StringWriter();
+            JsonTextWriter jsonWriter = new JsonTextWriter(sw);
+            jsonWriter.Formatting = Formatting.Indented;
+
+            DataTableConverter converter = new DataTableConverter();
+            converter.WriteJson(jsonWriter, dt, new JsonSerializer());
+
+            StringAssert.AreEqual(@"[
+  {
+    ""TimeSpan"": null,
+    ""Char[]"": null,
+    ""Type"": null,
+    ""Object"": null,
+    ""Byte[]"": null,
+    ""Uri"": null,
+    ""Guid"": null,
+    ""BigInteger"": null
+  }
+]", sw.ToString());
+        }
+
+        [Test]
+        public void SerializeValues()
+        {
+            DataTable dt = new DataTable();
+            Dictionary<Type, object> types = new Dictionary<Type, object>
+            {
+                [typeof(TimeSpan)] = TimeSpan.Zero,
+                [typeof(char[])] = new char[] {'a', 'b', 'c' },
+                [typeof(Type)] = typeof(string),
+                [typeof(Object)] = new object(),
+                [typeof(byte[])] = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 },
+                [typeof(Uri)] = new Uri("http://localhost"),
+                [typeof(Guid)] = new Guid(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11),
+                [typeof(BigInteger)] = BigInteger.Parse("10000000000000000000000000000000000")
+            };
+
+            foreach (var ss in types)
+            {
+                dt.Columns.Add(ss.Key.Name, ss.Key);
+            }
+
+            dt.Rows.Add(types.Select(t => t.Value).ToArray());
+
+            StringWriter sw = new StringWriter();
+            JsonTextWriter jsonWriter = new JsonTextWriter(sw);
+            jsonWriter.Formatting = Formatting.Indented;
+
+            DataTableConverter converter = new DataTableConverter();
+            converter.WriteJson(jsonWriter, dt, new JsonSerializer());
+
+            string stringName = typeof(string).AssemblyQualifiedName;
+
+            StringAssert.AreEqual(@"[
+  {
+    ""TimeSpan"": ""00:00:00"",
+    ""Char[]"": [
+      ""a"",
+      ""b"",
+      ""c""
+    ],
+    ""Type"": """ + stringName + @""",
+    ""Object"": {},
+    ""Byte[]"": ""AQIDBAUGBwg="",
+    ""Uri"": ""http://localhost"",
+    ""Guid"": ""00000001-0002-0003-0405-060708090a0b"",
+    ""BigInteger"": 10000000000000000000000000000000000
+  }
+]", sw.ToString());
+        }
+#endif
+
+        [Test]
+        public void WriteJsonNull()
+        {
+            StringWriter sw = new StringWriter();
+            JsonTextWriter jsonWriter = new JsonTextWriter(sw);
+
+            DataTableConverter converter = new DataTableConverter();
+            converter.WriteJson(jsonWriter, null, null);
+
+            StringAssert.AreEqual(@"null", sw.ToString());
+        }
+
         [Test]
         public void Deserialize()
         {
@@ -279,6 +404,7 @@ namespace Newtonsoft.Json.Tests.Converters
             Assert.AreEqual(t1.TableName, t2.TableName);
         }
 
+#pragma warning disable 618
         [Test]
         public void RoundtripBsonBytes()
         {
@@ -319,6 +445,7 @@ namespace Newtonsoft.Json.Tests.Converters
             CollectionAssert.AreEquivalent(Encoding.UTF8.GetBytes("Hello world!"), (byte[])dr1["data"]);
             Assert.AreEqual(g, (Guid)dr1["id"]);
         }
+#pragma warning restore 618
 
         [Test]
         public void SerializeDataTableWithNull()
@@ -425,7 +552,6 @@ namespace Newtonsoft.Json.Tests.Converters
             Assert.AreEqual("item!", pair2.Key.Rows[0]["item"]);
         }
 
-
         [Test]
         public void SerializedTypedDataTable()
         {
@@ -453,6 +579,146 @@ namespace Newtonsoft.Json.Tests.Converters
             var dt = JsonConvert.DeserializeObject<CustomerDataSet.CustomersDataTable>(json);
 
             Assert.AreEqual("432", dt[0].CustomerID);
+        }
+
+        public class DataTableTestClass
+        {
+            public DataTable Table { get; set; }
+        }
+
+        [Test]
+        public void SerializeNull()
+        {
+            DataTableTestClass c1 = new DataTableTestClass
+            {
+                Table = null
+            };
+
+            string json = JsonConvert.SerializeObject(c1, Formatting.Indented);
+
+            StringAssert.AreEqual(@"{
+  ""Table"": null
+}", json);
+
+            DataTableTestClass c2 = JsonConvert.DeserializeObject<DataTableTestClass>(json);
+
+            Assert.AreEqual(null, c2.Table);
+        }
+
+        [Test]
+        public void SerializeNullRoot()
+        {
+            string json = JsonConvert.SerializeObject(null, typeof(DataTable), new JsonSerializerSettings
+            {
+                Formatting = Formatting.Indented
+            });
+
+            StringAssert.AreEqual(@"null", json);
+        }
+
+#if !(NET20 || PORTABLE || PORTABLE40)
+        [Test]
+        public void DeserializedTypedDataTableWithConverter()
+        {
+            string json = @"{
+  ""TestTable"": [
+    {
+      ""DateTimeValue"": ""2015-11-28T00:00:00""
+    },
+    {
+      ""DateTimeValue"": null
+    }
+  ]
+}";
+
+            SqlTypesDataSet ds = JsonConvert.DeserializeObject<SqlTypesDataSet>(json, new SqlDateTimeConverter());
+
+            Assert.AreEqual(new System.Data.SqlTypes.SqlDateTime(2015, 11, 28), ds.TestTable[0].DateTimeValue);
+            Assert.AreEqual(System.Data.SqlTypes.SqlDateTime.Null, ds.TestTable[1].DateTimeValue);
+
+            string json2 = JsonConvert.SerializeObject(ds, Formatting.Indented, new SqlDateTimeConverter());
+
+            StringAssert.AreEqual(json, json2);
+        }
+
+        internal class SqlDateTimeConverter : JsonConverter
+        {
+            public override bool CanConvert(Type objectType)
+            {
+                return typeof(System.Data.SqlTypes.SqlDateTime).IsAssignableFrom(objectType);
+            }
+
+            public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+            {
+                if (reader.Value == null || reader.Value == DBNull.Value)
+                {
+                    return System.Data.SqlTypes.SqlDateTime.Null;
+                }
+                else
+                {
+                    return new System.Data.SqlTypes.SqlDateTime((DateTime)serializer.Deserialize(reader));
+                }
+            }
+
+            public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+            {
+                if (((System.Data.SqlTypes.SqlDateTime)value).IsNull)
+                {
+                    writer.WriteNull();
+                }
+                else
+                {
+                    writer.WriteValue(((System.Data.SqlTypes.SqlDateTime)value).Value);
+                }
+            }
+        }
+#endif
+
+        [Test]
+        public void HandleColumnOnError()
+        {
+            string json = "[{\"timeCol\":\"\"}]";
+            DataTable table = JsonConvert.DeserializeObject<CustomDataTable>(json);
+
+            Assert.AreEqual(DBNull.Value, table.Rows[0]["timeCol"]);
+        }
+
+        [JsonConverter(typeof(DataTableConverterTest))]
+        public class CustomDataTable : DataTable
+        {
+        }
+
+        public class DataTableConverterTest : DataTableConverter
+        {
+            protected DataTable CreateTable()
+            {
+                CustomDataTable table = new CustomDataTable();
+                table.Columns.Add("timeCol", typeof(DateTime));
+                return table;
+            }
+
+            public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+            {
+                if (existingValue == null)
+                {
+                    existingValue = CreateTable();
+                }
+
+                serializer.Error += OnError;
+                try
+                {
+                    return base.ReadJson(reader, objectType, existingValue, serializer);
+                }
+                finally
+                {
+                    serializer.Error -= OnError;
+                }
+            }
+
+            private void OnError(object sender, Json.Serialization.ErrorEventArgs e)
+            {
+                e.ErrorContext.Handled = true;
+            }
         }
     }
 }

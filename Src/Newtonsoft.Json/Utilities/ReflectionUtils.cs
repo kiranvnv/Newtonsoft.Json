@@ -25,16 +25,14 @@
 
 using System;
 using System.Collections.Generic;
-#if !(PORTABLE || PORTABLE40 || NET35 || NET20)
+#if HAVE_BIG_INTEGER
 using System.Numerics;
 #endif
 using System.Reflection;
 using System.Collections;
 using System.Globalization;
-using System.Runtime.Serialization;
-using System.Runtime.Serialization.Formatters;
 using System.Text;
-#if NET20
+#if !HAVE_LINQ
 using Newtonsoft.Json.Utilities.LinqBridge;
 #else
 using System.Linq;
@@ -43,18 +41,18 @@ using Newtonsoft.Json.Serialization;
 
 namespace Newtonsoft.Json.Utilities
 {
-#if (NETFX_CORE || PORTABLE || PORTABLE40)
+#if (DOTNET || PORTABLE || PORTABLE40) && !NETSTANDARD2_0
+    [Flags]
     internal enum MemberTypes
     {
-        Property,
-        Field,
-        Event,
-        Method,
-        Other
+        Event = 2,
+        Field = 4,
+        Method = 8,
+        Property = 16
     }
 #endif
 
-#if NETFX_CORE || PORTABLE
+#if PORTABLE && !NETSTANDARD2_0
     [Flags]
     internal enum BindingFlags
     {
@@ -87,85 +85,95 @@ namespace Newtonsoft.Json.Utilities
 
         static ReflectionUtils()
         {
-#if !(NETFX_CORE || PORTABLE40 || PORTABLE)
+#if HAVE_EMPTY_TYPES
             EmptyTypes = Type.EmptyTypes;
 #else
-            EmptyTypes = new Type[0];
+            EmptyTypes = CollectionUtils.ArrayEmpty<Type>();
 #endif
         }
 
         public static bool IsVirtual(this PropertyInfo propertyInfo)
         {
-            ValidationUtils.ArgumentNotNull(propertyInfo, "propertyInfo");
+            ValidationUtils.ArgumentNotNull(propertyInfo, nameof(propertyInfo));
 
-            MethodInfo m = propertyInfo.GetGetMethod();
+            MethodInfo m = propertyInfo.GetGetMethod(true);
             if (m != null && m.IsVirtual)
+            {
                 return true;
+            }
 
-            m = propertyInfo.GetSetMethod();
+            m = propertyInfo.GetSetMethod(true);
             if (m != null && m.IsVirtual)
+            {
                 return true;
+            }
 
             return false;
         }
 
         public static MethodInfo GetBaseDefinition(this PropertyInfo propertyInfo)
         {
-            ValidationUtils.ArgumentNotNull(propertyInfo, "propertyInfo");
+            ValidationUtils.ArgumentNotNull(propertyInfo, nameof(propertyInfo));
 
-            MethodInfo m = propertyInfo.GetGetMethod();
+            MethodInfo m = propertyInfo.GetGetMethod(true);
             if (m != null)
+            {
                 return m.GetBaseDefinition();
+            }
 
-            m = propertyInfo.GetSetMethod();
-            if (m != null)
-                return m.GetBaseDefinition();
-
-            return null;
+            return propertyInfo.GetSetMethod(true)?.GetBaseDefinition();
         }
 
         public static bool IsPublic(PropertyInfo property)
         {
             if (property.GetGetMethod() != null && property.GetGetMethod().IsPublic)
+            {
                 return true;
+            }
             if (property.GetSetMethod() != null && property.GetSetMethod().IsPublic)
+            {
                 return true;
+            }
 
             return false;
         }
 
         public static Type GetObjectType(object v)
         {
-            return (v != null) ? v.GetType() : null;
+            return v?.GetType();
         }
 
-        public static string GetTypeName(Type t, FormatterAssemblyStyle assemblyFormat, SerializationBinder binder)
+        public static string GetTypeName(Type t, TypeNameAssemblyFormatHandling assemblyFormat, ISerializationBinder binder)
         {
-            string fullyQualifiedTypeName;
-#if !(NET20 || NET35)
-            if (binder != null)
-            {
-                string assemblyName, typeName;
-                binder.BindToName(t, out assemblyName, out typeName);
-                fullyQualifiedTypeName = typeName + (assemblyName == null ? "" : ", " + assemblyName);
-            }
-            else
-            {
-                fullyQualifiedTypeName = t.AssemblyQualifiedName;
-            }
-#else
-            fullyQualifiedTypeName = t.AssemblyQualifiedName;
-#endif
+            string fullyQualifiedTypeName = GetFullyQualifiedTypeName(t, binder);
 
             switch (assemblyFormat)
             {
-                case FormatterAssemblyStyle.Simple:
+                case TypeNameAssemblyFormatHandling.Simple:
                     return RemoveAssemblyDetails(fullyQualifiedTypeName);
-                case FormatterAssemblyStyle.Full:
+                case TypeNameAssemblyFormatHandling.Full:
                     return fullyQualifiedTypeName;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
+        }
+
+        private static string GetFullyQualifiedTypeName(Type t, ISerializationBinder binder)
+        {
+            if (binder != null)
+            {
+                binder.BindToName(t, out string assemblyName, out string typeName);
+#if (NET20 || NET35)
+                // for older SerializationBinder implementations that didn't have BindToName
+                if (assemblyName == null & typeName == null)
+                {
+                    return t.AssemblyQualifiedName;
+                }
+#endif
+                return typeName + (assemblyName == null ? "" : ", " + assemblyName);
+            }
+
+            return t.AssemblyQualifiedName;
         }
 
         private static string RemoveAssemblyDetails(string fullyQualifiedTypeName)
@@ -203,7 +211,9 @@ namespace Newtonsoft.Json.Utilities
                         break;
                     default:
                         if (!skippingAssemblyDetails)
+                        {
                             builder.Append(current);
+                        }
                         break;
                 }
             }
@@ -213,10 +223,12 @@ namespace Newtonsoft.Json.Utilities
 
         public static bool HasDefaultConstructor(Type t, bool nonPublic)
         {
-            ValidationUtils.ArgumentNotNull(t, "t");
+            ValidationUtils.ArgumentNotNull(t, nameof(t));
 
             if (t.IsValueType())
+            {
                 return true;
+            }
 
             return (GetDefaultConstructor(t, nonPublic) != null);
         }
@@ -230,24 +242,28 @@ namespace Newtonsoft.Json.Utilities
         {
             BindingFlags bindingFlags = BindingFlags.Instance | BindingFlags.Public;
             if (nonPublic)
+            {
                 bindingFlags = bindingFlags | BindingFlags.NonPublic;
+            }
 
             return t.GetConstructors(bindingFlags).SingleOrDefault(c => !c.GetParameters().Any());
         }
 
         public static bool IsNullable(Type t)
         {
-            ValidationUtils.ArgumentNotNull(t, "t");
+            ValidationUtils.ArgumentNotNull(t, nameof(t));
 
             if (t.IsValueType())
+            {
                 return IsNullableType(t);
+            }
 
             return true;
         }
 
         public static bool IsNullableType(Type t)
         {
-            ValidationUtils.ArgumentNotNull(t, "t");
+            ValidationUtils.ArgumentNotNull(t, nameof(t));
 
             return (t.IsGenericType() && t.GetGenericTypeDefinition() == typeof(Nullable<>));
         }
@@ -259,10 +275,19 @@ namespace Newtonsoft.Json.Utilities
                 : t;
         }
 
+        public static Type EnsureNotByRefType(Type t)
+        {
+            return (t.IsByRef && t.HasElementType)
+                ? t.GetElementType()
+                : t;
+        }
+
         public static bool IsGenericDefinition(Type type, Type genericInterfaceDefinition)
         {
             if (!type.IsGenericType())
+            {
                 return false;
+            }
 
             Type t = type.GetGenericTypeDefinition();
             return (t == genericInterfaceDefinition);
@@ -270,17 +295,18 @@ namespace Newtonsoft.Json.Utilities
 
         public static bool ImplementsGenericDefinition(Type type, Type genericInterfaceDefinition)
         {
-            Type implementingType;
-            return ImplementsGenericDefinition(type, genericInterfaceDefinition, out implementingType);
+            return ImplementsGenericDefinition(type, genericInterfaceDefinition, out _);
         }
 
         public static bool ImplementsGenericDefinition(Type type, Type genericInterfaceDefinition, out Type implementingType)
         {
-            ValidationUtils.ArgumentNotNull(type, "type");
-            ValidationUtils.ArgumentNotNull(genericInterfaceDefinition, "genericInterfaceDefinition");
+            ValidationUtils.ArgumentNotNull(type, nameof(type));
+            ValidationUtils.ArgumentNotNull(genericInterfaceDefinition, nameof(genericInterfaceDefinition));
 
             if (!genericInterfaceDefinition.IsInterface() || !genericInterfaceDefinition.IsGenericTypeDefinition())
+            {
                 throw new ArgumentNullException("'{0}' is not a generic interface definition.".FormatWith(CultureInfo.InvariantCulture, genericInterfaceDefinition));
+            }
 
             if (type.IsInterface())
             {
@@ -316,41 +342,38 @@ namespace Newtonsoft.Json.Utilities
 
         public static bool InheritsGenericDefinition(Type type, Type genericClassDefinition)
         {
-            Type implementingType;
-            return InheritsGenericDefinition(type, genericClassDefinition, out implementingType);
+            return InheritsGenericDefinition(type, genericClassDefinition, out _);
         }
 
         public static bool InheritsGenericDefinition(Type type, Type genericClassDefinition, out Type implementingType)
         {
-            ValidationUtils.ArgumentNotNull(type, "type");
-            ValidationUtils.ArgumentNotNull(genericClassDefinition, "genericClassDefinition");
+            ValidationUtils.ArgumentNotNull(type, nameof(type));
+            ValidationUtils.ArgumentNotNull(genericClassDefinition, nameof(genericClassDefinition));
 
             if (!genericClassDefinition.IsClass() || !genericClassDefinition.IsGenericTypeDefinition())
+            {
                 throw new ArgumentNullException("'{0}' is not a generic class definition.".FormatWith(CultureInfo.InvariantCulture, genericClassDefinition));
+            }
 
             return InheritsGenericDefinitionInternal(type, genericClassDefinition, out implementingType);
         }
 
         private static bool InheritsGenericDefinitionInternal(Type currentType, Type genericClassDefinition, out Type implementingType)
         {
-            if (currentType.IsGenericType())
+            do
             {
-                Type currentGenericClassDefinition = currentType.GetGenericTypeDefinition();
-
-                if (genericClassDefinition == currentGenericClassDefinition)
+                if (currentType.IsGenericType() && genericClassDefinition == currentType.GetGenericTypeDefinition())
                 {
                     implementingType = currentType;
                     return true;
                 }
-            }
 
-            if (currentType.BaseType() == null)
-            {
-                implementingType = null;
-                return false;
+                currentType = currentType.BaseType();
             }
+            while (currentType != null);
 
-            return InheritsGenericDefinitionInternal(currentType.BaseType(), genericClassDefinition, out implementingType);
+            implementingType = null;
+            return false;
         }
 
         /// <summary>
@@ -360,17 +383,18 @@ namespace Newtonsoft.Json.Utilities
         /// <returns>The type of the typed collection's items.</returns>
         public static Type GetCollectionItemType(Type type)
         {
-            ValidationUtils.ArgumentNotNull(type, "type");
-            Type genericListType;
+            ValidationUtils.ArgumentNotNull(type, nameof(type));
 
             if (type.IsArray)
             {
                 return type.GetElementType();
             }
-            if (ImplementsGenericDefinition(type, typeof(IEnumerable<>), out genericListType))
+            if (ImplementsGenericDefinition(type, typeof(IEnumerable<>), out Type genericListType))
             {
                 if (genericListType.IsGenericTypeDefinition())
+                {
                     throw new Exception("Type {0} is not a collection.".FormatWith(CultureInfo.InvariantCulture, type));
+                }
 
                 return genericListType.GetGenericArguments()[0];
             }
@@ -378,19 +402,20 @@ namespace Newtonsoft.Json.Utilities
             {
                 return null;
             }
-            
+
             throw new Exception("Type {0} is not a collection.".FormatWith(CultureInfo.InvariantCulture, type));
         }
 
         public static void GetDictionaryKeyValueTypes(Type dictionaryType, out Type keyType, out Type valueType)
         {
-            ValidationUtils.ArgumentNotNull(dictionaryType, "type");
+            ValidationUtils.ArgumentNotNull(dictionaryType, nameof(dictionaryType));
 
-            Type genericDictionaryType;
-            if (ImplementsGenericDefinition(dictionaryType, typeof(IDictionary<,>), out genericDictionaryType))
+            if (ImplementsGenericDefinition(dictionaryType, typeof(IDictionary<,>), out Type genericDictionaryType))
             {
                 if (genericDictionaryType.IsGenericTypeDefinition())
+                {
                     throw new Exception("Type {0} is not a dictionary.".FormatWith(CultureInfo.InvariantCulture, dictionaryType));
+                }
 
                 Type[] dictionaryGenericArguments = genericDictionaryType.GetGenericArguments();
 
@@ -415,7 +440,7 @@ namespace Newtonsoft.Json.Utilities
         /// <returns>The underlying type of the member.</returns>
         public static Type GetMemberUnderlyingType(MemberInfo member)
         {
-            ValidationUtils.ArgumentNotNull(member, "member");
+            ValidationUtils.ArgumentNotNull(member, nameof(member));
 
             switch (member.MemberType())
             {
@@ -428,7 +453,7 @@ namespace Newtonsoft.Json.Utilities
                 case MemberTypes.Method:
                     return ((MethodInfo)member).ReturnType;
                 default:
-                    throw new ArgumentException("MemberInfo must be of type FieldInfo, PropertyInfo, EventInfo or MethodInfo", "member");
+                    throw new ArgumentException("MemberInfo must be of type FieldInfo, PropertyInfo, EventInfo or MethodInfo", nameof(member));
             }
         }
 
@@ -441,14 +466,16 @@ namespace Newtonsoft.Json.Utilities
         /// </returns>
         public static bool IsIndexedProperty(MemberInfo member)
         {
-            ValidationUtils.ArgumentNotNull(member, "member");
+            ValidationUtils.ArgumentNotNull(member, nameof(member));
 
-            PropertyInfo propertyInfo = member as PropertyInfo;
-
-            if (propertyInfo != null)
+            if (member is PropertyInfo propertyInfo)
+            {
                 return IsIndexedProperty(propertyInfo);
+            }
             else
+            {
                 return false;
+            }
         }
 
         /// <summary>
@@ -460,7 +487,7 @@ namespace Newtonsoft.Json.Utilities
         /// </returns>
         public static bool IsIndexedProperty(PropertyInfo property)
         {
-            ValidationUtils.ArgumentNotNull(property, "property");
+            ValidationUtils.ArgumentNotNull(property, nameof(property));
 
             return (property.GetIndexParameters().Length > 0);
         }
@@ -473,8 +500,8 @@ namespace Newtonsoft.Json.Utilities
         /// <returns>The member's value on the object.</returns>
         public static object GetMemberValue(MemberInfo member, object target)
         {
-            ValidationUtils.ArgumentNotNull(member, "member");
-            ValidationUtils.ArgumentNotNull(target, "target");
+            ValidationUtils.ArgumentNotNull(member, nameof(member));
+            ValidationUtils.ArgumentNotNull(target, nameof(target));
 
             switch (member.MemberType())
             {
@@ -490,7 +517,7 @@ namespace Newtonsoft.Json.Utilities
                         throw new ArgumentException("MemberInfo '{0}' has index parameters".FormatWith(CultureInfo.InvariantCulture, member.Name), e);
                     }
                 default:
-                    throw new ArgumentException("MemberInfo '{0}' is not of type FieldInfo or PropertyInfo".FormatWith(CultureInfo.InvariantCulture, CultureInfo.InvariantCulture, member.Name), "member");
+                    throw new ArgumentException("MemberInfo '{0}' is not of type FieldInfo or PropertyInfo".FormatWith(CultureInfo.InvariantCulture, member.Name), nameof(member));
             }
         }
 
@@ -502,8 +529,8 @@ namespace Newtonsoft.Json.Utilities
         /// <param name="value">The value.</param>
         public static void SetMemberValue(MemberInfo member, object target, object value)
         {
-            ValidationUtils.ArgumentNotNull(member, "member");
-            ValidationUtils.ArgumentNotNull(target, "target");
+            ValidationUtils.ArgumentNotNull(member, nameof(member));
+            ValidationUtils.ArgumentNotNull(target, nameof(target));
 
             switch (member.MemberType())
             {
@@ -514,7 +541,7 @@ namespace Newtonsoft.Json.Utilities
                     ((PropertyInfo)member).SetValue(target, value, null);
                     break;
                 default:
-                    throw new ArgumentException("MemberInfo '{0}' must be of type FieldInfo or PropertyInfo".FormatWith(CultureInfo.InvariantCulture, member.Name), "member");
+                    throw new ArgumentException("MemberInfo '{0}' must be of type FieldInfo or PropertyInfo".FormatWith(CultureInfo.InvariantCulture, member.Name), nameof(member));
             }
         }
 
@@ -534,17 +561,25 @@ namespace Newtonsoft.Json.Utilities
                     FieldInfo fieldInfo = (FieldInfo)member;
 
                     if (nonPublic)
+                    {
                         return true;
+                    }
                     else if (fieldInfo.IsPublic)
+                    {
                         return true;
+                    }
                     return false;
                 case MemberTypes.Property:
                     PropertyInfo propertyInfo = (PropertyInfo)member;
 
                     if (!propertyInfo.CanRead)
+                    {
                         return false;
+                    }
                     if (nonPublic)
+                    {
                         return true;
+                    }
                     return (propertyInfo.GetGetMethod(nonPublic) != null);
                 default:
                     return false;
@@ -567,20 +602,34 @@ namespace Newtonsoft.Json.Utilities
                 case MemberTypes.Field:
                     FieldInfo fieldInfo = (FieldInfo)member;
 
-                    if (fieldInfo.IsInitOnly && !canSetReadOnly)
+                    if (fieldInfo.IsLiteral)
+                    {
                         return false;
+                    }
+                    if (fieldInfo.IsInitOnly && !canSetReadOnly)
+                    {
+                        return false;
+                    }
                     if (nonPublic)
+                    {
                         return true;
-                    else if (fieldInfo.IsPublic)
+                    }
+                    if (fieldInfo.IsPublic)
+                    {
                         return true;
+                    }
                     return false;
                 case MemberTypes.Property:
                     PropertyInfo propertyInfo = (PropertyInfo)member;
 
                     if (!propertyInfo.CanWrite)
+                    {
                         return false;
+                    }
                     if (nonPublic)
+                    {
                         return true;
+                    }
                     return (propertyInfo.GetSetMethod(nonPublic) != null);
                 default:
                     return false;
@@ -600,27 +649,37 @@ namespace Newtonsoft.Json.Utilities
             // update: I think this is fixed in .NET 3.5 SP1 - leave this in for now...
             List<MemberInfo> distinctMembers = new List<MemberInfo>(targetMembers.Count);
 
-            foreach (var groupedMember in targetMembers.GroupBy(m => m.Name))
+            foreach (IGrouping<string, MemberInfo> groupedMember in targetMembers.GroupBy(m => m.Name))
             {
                 int count = groupedMember.Count();
-                IList<MemberInfo> members = groupedMember.ToList();
 
                 if (count == 1)
                 {
-                    distinctMembers.Add(members.First());
+                    distinctMembers.Add(groupedMember.First());
                 }
                 else
                 {
-                    IList<MemberInfo> resolvedMembers = new List<MemberInfo>();
-                    foreach (MemberInfo memberInfo in members)
+                    List<MemberInfo> resolvedMembers = new List<MemberInfo>();
+                    foreach (MemberInfo memberInfo in groupedMember)
                     {
                         // this is a bit hacky
                         // if the hiding property is hiding a base property and it is virtual
                         // then this ensures the derived property gets used
                         if (resolvedMembers.Count == 0)
+                        {
                             resolvedMembers.Add(memberInfo);
+                        }
                         else if (!IsOverridenGenericMember(memberInfo, bindingAttr) || memberInfo.Name == "Item")
+                        {
+                            // two members with the same name were declared on a type
+                            // this can be done via IL emit, e.g. Moq
+                            if (resolvedMembers.Any(m => m.DeclaringType == memberInfo.DeclaringType))
+                            {
+                                continue;
+                            }
+
                             resolvedMembers.Add(memberInfo);
+                        }
                     }
 
                     distinctMembers.AddRange(resolvedMembers);
@@ -633,24 +692,36 @@ namespace Newtonsoft.Json.Utilities
         private static bool IsOverridenGenericMember(MemberInfo memberInfo, BindingFlags bindingAttr)
         {
             if (memberInfo.MemberType() != MemberTypes.Property)
+            {
                 return false;
+            }
 
             PropertyInfo propertyInfo = (PropertyInfo)memberInfo;
             if (!IsVirtual(propertyInfo))
+            {
                 return false;
+            }
 
             Type declaringType = propertyInfo.DeclaringType;
             if (!declaringType.IsGenericType())
+            {
                 return false;
+            }
             Type genericTypeDefinition = declaringType.GetGenericTypeDefinition();
             if (genericTypeDefinition == null)
+            {
                 return false;
+            }
             MemberInfo[] members = genericTypeDefinition.GetMember(propertyInfo.Name, bindingAttr);
             if (members.Length == 0)
+            {
                 return false;
+            }
             Type memberUnderlyingType = GetMemberUnderlyingType(members[0]);
             if (!memberUnderlyingType.IsGenericParameter)
+            {
                 return false;
+            }
 
             return true;
         }
@@ -664,46 +735,66 @@ namespace Newtonsoft.Json.Utilities
         {
             T[] attributes = GetAttributes<T>(attributeProvider, inherit);
 
-            return (attributes != null) ? attributes.SingleOrDefault() : null;
+            return attributes?.FirstOrDefault();
         }
 
-#if !(NETFX_CORE || PORTABLE)
+#if !(DOTNET || PORTABLE) || NETSTANDARD2_0
         public static T[] GetAttributes<T>(object attributeProvider, bool inherit) where T : Attribute
         {
-            return (T[])GetAttributes(attributeProvider, typeof(T), inherit);
+            Attribute[] a = GetAttributes(attributeProvider, typeof(T), inherit);
+
+            if (a is T[] attributes)
+            {
+                return attributes;
+            }
+
+            return a.Cast<T>().ToArray();
         }
 
         public static Attribute[] GetAttributes(object attributeProvider, Type attributeType, bool inherit)
         {
-            ValidationUtils.ArgumentNotNull(attributeProvider, "attributeProvider");
+            ValidationUtils.ArgumentNotNull(attributeProvider, nameof(attributeProvider));
 
             object provider = attributeProvider;
 
             // http://hyperthink.net/blog/getcustomattributes-gotcha/
             // ICustomAttributeProvider doesn't do inheritance
 
-            if (provider is Type)
-                return (Attribute[])((Type)provider).GetCustomAttributes(attributeType, inherit);
+            switch (provider)
+            {
+                case Type t:
+                    object[] array = attributeType != null ? t.GetCustomAttributes(attributeType, inherit) : t.GetCustomAttributes(inherit);
+                    Attribute[] attributes = array.Cast<Attribute>().ToArray();
 
-            if (provider is Assembly)
-                return Attribute.GetCustomAttributes((Assembly)provider, attributeType);
-
-            if (provider is MemberInfo)
-                return Attribute.GetCustomAttributes((MemberInfo)provider, attributeType, inherit);
-
-#if !PORTABLE40
-            if (provider is Module)
-                return Attribute.GetCustomAttributes((Module)provider, attributeType, inherit);
+#if (NET20 || NET35)
+                    // ye olde .NET GetCustomAttributes doesn't respect the inherit argument
+                    if (inherit && t.BaseType != null)
+                    {
+                        attributes = attributes.Union(GetAttributes(t.BaseType, attributeType, inherit)).ToArray();
+                    }
 #endif
 
-            if (provider is ParameterInfo)
-                return Attribute.GetCustomAttributes((ParameterInfo)provider, attributeType, inherit);
-
+                    return attributes;
+                case Assembly a:
+                    return (attributeType != null) ? Attribute.GetCustomAttributes(a, attributeType) : Attribute.GetCustomAttributes(a);
+                case MemberInfo mi:
+                    return (attributeType != null) ? Attribute.GetCustomAttributes(mi, attributeType, inherit) : Attribute.GetCustomAttributes(mi, inherit);
 #if !PORTABLE40
-            return (Attribute[])((ICustomAttributeProvider)attributeProvider).GetCustomAttributes(attributeType, inherit);
+                case Module m:
+                    return (attributeType != null) ? Attribute.GetCustomAttributes(m, attributeType, inherit) : Attribute.GetCustomAttributes(m, inherit);
+#endif
+                case ParameterInfo p:
+                    return (attributeType != null) ? Attribute.GetCustomAttributes(p, attributeType, inherit) : Attribute.GetCustomAttributes(p, inherit);
+                default:
+#if !PORTABLE40
+                    ICustomAttributeProvider customAttributeProvider = (ICustomAttributeProvider)attributeProvider;
+                    object[] result = (attributeType != null) ? customAttributeProvider.GetCustomAttributes(attributeType, inherit) : customAttributeProvider.GetCustomAttributes(inherit);
+
+                    return (Attribute[])result;
 #else
-            throw new Exception("Cannot get attributes from '{0}'.".FormatWith(CultureInfo.InvariantCulture, provider));
+                    throw new Exception("Cannot get attributes from '{0}'.".FormatWith(CultureInfo.InvariantCulture, provider));
 #endif
+            }
         }
 #else
         public static T[] GetAttributes<T>(object attributeProvider, bool inherit) where T : Attribute
@@ -713,39 +804,45 @@ namespace Newtonsoft.Json.Utilities
 
         public static Attribute[] GetAttributes(object provider, Type attributeType, bool inherit)
         {
-            if (provider is Type)
-                return ((Type) provider).GetTypeInfo().GetCustomAttributes(attributeType, inherit).ToArray();
-
-            if (provider is Assembly)
-                return ((Assembly) provider).GetCustomAttributes(attributeType).ToArray();
-
-            if (provider is MemberInfo)
-                return ((MemberInfo) provider).GetCustomAttributes(attributeType, inherit).ToArray();
-
-            if (provider is Module)
-                return ((Module) provider).GetCustomAttributes(attributeType).ToArray();
-
-            if (provider is ParameterInfo)
-                return ((ParameterInfo) provider).GetCustomAttributes(attributeType, inherit).ToArray();
+            switch (provider)
+            {
+                case Type t:
+                    return (attributeType != null)
+                        ? t.GetTypeInfo().GetCustomAttributes(attributeType, inherit).ToArray()
+                        : t.GetTypeInfo().GetCustomAttributes(inherit).ToArray();
+                case Assembly a:
+                    return (attributeType != null) ? a.GetCustomAttributes(attributeType).ToArray() : a.GetCustomAttributes().ToArray();
+                case MemberInfo memberInfo:
+                    return (attributeType != null) ? memberInfo.GetCustomAttributes(attributeType, inherit).ToArray() : memberInfo.GetCustomAttributes(inherit).ToArray();
+                case Module module:
+                    return (attributeType != null) ? module.GetCustomAttributes(attributeType).ToArray() : module.GetCustomAttributes().ToArray();
+                case ParameterInfo parameterInfo:
+                    return (attributeType != null) ? parameterInfo.GetCustomAttributes(attributeType, inherit).ToArray() : parameterInfo.GetCustomAttributes(inherit).ToArray();
+            }
 
             throw new Exception("Cannot get attributes from '{0}'.".FormatWith(CultureInfo.InvariantCulture, provider));
         }
 #endif
 
-        public static void SplitFullyQualifiedTypeName(string fullyQualifiedTypeName, out string typeName, out string assemblyName)
+        public static StructMultiKey<string, string> SplitFullyQualifiedTypeName(string fullyQualifiedTypeName)
         {
             int? assemblyDelimiterIndex = GetAssemblyDelimiterIndex(fullyQualifiedTypeName);
 
+            string typeName;
+            string assemblyName;
+
             if (assemblyDelimiterIndex != null)
             {
-                typeName = fullyQualifiedTypeName.Substring(0, assemblyDelimiterIndex.Value).Trim();
-                assemblyName = fullyQualifiedTypeName.Substring(assemblyDelimiterIndex.Value + 1, fullyQualifiedTypeName.Length - assemblyDelimiterIndex.Value - 1).Trim();
+                typeName = fullyQualifiedTypeName.Trim(0, assemblyDelimiterIndex.GetValueOrDefault());
+                assemblyName = fullyQualifiedTypeName.Trim(assemblyDelimiterIndex.GetValueOrDefault() + 1, fullyQualifiedTypeName.Length - assemblyDelimiterIndex.GetValueOrDefault() - 1);
             }
             else
             {
                 typeName = fullyQualifiedTypeName;
                 assemblyName = null;
             }
+
+            return new StructMultiKey<string, string>(assemblyName, typeName);
         }
 
         private static int? GetAssemblyDelimiterIndex(string fullyQualifiedTypeName)
@@ -766,7 +863,9 @@ namespace Newtonsoft.Json.Utilities
                         break;
                     case ',':
                         if (scope == 0)
+                        {
                             return i;
+                        }
                         break;
                 }
             }
@@ -793,10 +892,10 @@ namespace Newtonsoft.Json.Utilities
 
         public static IEnumerable<FieldInfo> GetFields(Type targetType, BindingFlags bindingAttr)
         {
-            ValidationUtils.ArgumentNotNull(targetType, "targetType");
+            ValidationUtils.ArgumentNotNull(targetType, nameof(targetType));
 
             List<MemberInfo> fieldInfos = new List<MemberInfo>(targetType.GetFields(bindingAttr));
-#if !(NETFX_CORE || PORTABLE)
+#if !PORTABLE
             // Type.GetFields doesn't return inherited private fields
             // manually find private fields from base class
             GetChildPrivateFields(fieldInfos, targetType, bindingAttr);
@@ -805,7 +904,7 @@ namespace Newtonsoft.Json.Utilities
             return fieldInfos.Cast<FieldInfo>();
         }
 
-#if !(NETFX_CORE || PORTABLE)
+#if !PORTABLE
         private static void GetChildPrivateFields(IList<MemberInfo> initialFields, Type targetType, BindingFlags bindingAttr)
         {
             // fix weirdness with private FieldInfos only being returned for the current Type
@@ -818,8 +917,8 @@ namespace Newtonsoft.Json.Utilities
                 while ((targetType = targetType.BaseType()) != null)
                 {
                     // filter out protected fields
-                    IEnumerable<MemberInfo> childPrivateFields =
-                        targetType.GetFields(nonPublicBindingAttr).Where(f => f.IsPrivate).Cast<MemberInfo>();
+                    IEnumerable<FieldInfo> childPrivateFields =
+                        targetType.GetFields(nonPublicBindingAttr).Where(f => f.IsPrivate);
 
                     initialFields.AddRange(childPrivateFields);
                 }
@@ -829,12 +928,22 @@ namespace Newtonsoft.Json.Utilities
 
         public static IEnumerable<PropertyInfo> GetProperties(Type targetType, BindingFlags bindingAttr)
         {
-            ValidationUtils.ArgumentNotNull(targetType, "targetType");
+            ValidationUtils.ArgumentNotNull(targetType, nameof(targetType));
 
             List<PropertyInfo> propertyInfos = new List<PropertyInfo>(targetType.GetProperties(bindingAttr));
+
+            // GetProperties on an interface doesn't return properties from its interfaces
+            if (targetType.IsInterface())
+            {
+                foreach (Type i in targetType.GetInterfaces())
+                {
+                    propertyInfos.AddRange(i.GetProperties(bindingAttr));
+                }
+            }
+
             GetChildPrivateProperties(propertyInfos, targetType, bindingAttr);
 
-            // a base class private getter/setter will be inaccessable unless the property was gotten from the base class
+            // a base class private getter/setter will be inaccessible unless the property was gotten from the base class
             for (int i = 0; i < propertyInfos.Count; i++)
             {
                 PropertyInfo member = propertyInfos[i];
@@ -868,47 +977,53 @@ namespace Newtonsoft.Json.Utilities
                 {
                     PropertyInfo subTypeProperty = propertyInfo;
 
-                    if (!IsPublic(subTypeProperty))
+                    if (!subTypeProperty.IsVirtual())
                     {
-                        // have to test on name rather than reference because instances are different
-                        // depending on the type that GetProperties was called on
-                        int index = initialProperties.IndexOf(p => p.Name == subTypeProperty.Name);
-                        if (index == -1)
+                        if (!IsPublic(subTypeProperty))
                         {
-                            initialProperties.Add(subTypeProperty);
-                        }
-                        else
-                        {
-                            PropertyInfo childProperty = initialProperties[index];
-                            // don't replace public child with private base
-                            if (!IsPublic(childProperty))
+                            // have to test on name rather than reference because instances are different
+                            // depending on the type that GetProperties was called on
+                            int index = initialProperties.IndexOf(p => p.Name == subTypeProperty.Name);
+                            if (index == -1)
                             {
-                                // replace nonpublic properties for a child, but gotten from
-                                // the parent with the one from the child
-                                // the property gotten from the child will have access to private getter/setter
-                                initialProperties[index] = subTypeProperty;
+                                initialProperties.Add(subTypeProperty);
+                            }
+                            else
+                            {
+                                PropertyInfo childProperty = initialProperties[index];
+                                // don't replace public child with private base
+                                if (!IsPublic(childProperty))
+                                {
+                                    // replace nonpublic properties for a child, but gotten from
+                                    // the parent with the one from the child
+                                    // the property gotten from the child will have access to private getter/setter
+                                    initialProperties[index] = subTypeProperty;
+                                }
                             }
                         }
-                    }
-                    else
-                    {
-                        if (!subTypeProperty.IsVirtual())
+                        else
                         {
                             int index = initialProperties.IndexOf(p => p.Name == subTypeProperty.Name
                                                                        && p.DeclaringType == subTypeProperty.DeclaringType);
 
                             if (index == -1)
+                            {
                                 initialProperties.Add(subTypeProperty);
+                            }
                         }
-                        else
-                        {
-                            int index = initialProperties.IndexOf(p => p.Name == subTypeProperty.Name
-                                                                       && p.IsVirtual()
-                                                                       && p.GetBaseDefinition() != null
-                                                                       && p.GetBaseDefinition().DeclaringType.IsAssignableFrom(subTypeProperty.DeclaringType));
+                    }
+                    else
+                    {
+                        Type subTypePropertyDeclaringType = subTypeProperty.GetBaseDefinition()?.DeclaringType ?? subTypeProperty.DeclaringType;
 
-                            if (index == -1)
-                                initialProperties.Add(subTypeProperty);
+                        int index = initialProperties.IndexOf(p => p.Name == subTypeProperty.Name
+                                                                   && p.IsVirtual()
+                                                                   && (p.GetBaseDefinition()?.DeclaringType ?? p.DeclaringType).IsAssignableFrom(subTypePropertyDeclaringType));
+
+                        // don't add a virtual property that has an override
+                        if (index == -1)
+                        {
+                            initialProperties.Add(subTypeProperty);
                         }
                     }
                 }
@@ -931,7 +1046,9 @@ namespace Newtonsoft.Json.Utilities
         public static object GetDefaultValue(Type type)
         {
             if (!type.IsValueType())
+            {
                 return null;
+            }
 
             switch (ConvertUtils.GetTypeCode(type))
             {
@@ -956,20 +1073,22 @@ namespace Newtonsoft.Json.Utilities
                     return 0m;
                 case PrimitiveTypeCode.DateTime:
                     return new DateTime();
-#if !(PORTABLE || PORTABLE40 || NET35 || NET20)
+#if HAVE_BIG_INTEGER
                 case PrimitiveTypeCode.BigInteger:
                     return new BigInteger();
 #endif
                 case PrimitiveTypeCode.Guid:
                     return new Guid();
-#if !NET20
+#if HAVE_DATE_TIME_OFFSET
                 case PrimitiveTypeCode.DateTimeOffset:
                     return new DateTimeOffset();
 #endif
             }
 
             if (IsNullable(type))
+            {
                 return null;
+            }
 
             // possibly use IL initobj for perf here?
             return Activator.CreateInstance(type);

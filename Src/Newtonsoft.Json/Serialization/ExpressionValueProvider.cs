@@ -24,9 +24,10 @@
 #endregion
 
 #if !(NET20 || NET35)
+
 using System;
 using System.Collections.Generic;
-#if NET20
+#if !HAVE_LINQ
 using Newtonsoft.Json.Utilities.LinqBridge;
 #endif
 using System.Text;
@@ -51,7 +52,7 @@ namespace Newtonsoft.Json.Serialization
         /// <param name="memberInfo">The member info.</param>
         public ExpressionValueProvider(MemberInfo memberInfo)
         {
-            ValidationUtils.ArgumentNotNull(memberInfo, "memberInfo");
+            ValidationUtils.ArgumentNotNull(memberInfo, nameof(memberInfo));
             _memberInfo = memberInfo;
         }
 
@@ -65,7 +66,9 @@ namespace Newtonsoft.Json.Serialization
             try
             {
                 if (_setter == null)
+                {
                     _setter = ExpressionReflectionDelegateFactory.Instance.CreateSet<object>(_memberInfo);
+                }
 
 #if DEBUG
                 // dynamic method doesn't check whether the type is 'legal' to set
@@ -73,7 +76,9 @@ namespace Newtonsoft.Json.Serialization
                 if (value == null)
                 {
                     if (!ReflectionUtils.IsNullable(ReflectionUtils.GetMemberUnderlyingType(_memberInfo)))
+                    {
                         throw new JsonSerializationException("Incompatible value. Cannot set {0} to null.".FormatWith(CultureInfo.InvariantCulture, _memberInfo));
+                    }
                 }
                 else if (!ReflectionUtils.GetMemberUnderlyingType(_memberInfo).IsAssignableFrom(value.GetType()))
                 {
@@ -99,7 +104,9 @@ namespace Newtonsoft.Json.Serialization
             try
             {
                 if (_getter == null)
+                {
                     _getter = ExpressionReflectionDelegateFactory.Instance.CreateGet<object>(_memberInfo);
+                }
 
                 return _getter(target);
             }

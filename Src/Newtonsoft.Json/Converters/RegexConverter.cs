@@ -27,7 +27,9 @@ using System;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Bson;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using Newtonsoft.Json.Serialization;
+using Newtonsoft.Json.Utilities;
 
 namespace Newtonsoft.Json.Converters
 {
@@ -47,13 +49,24 @@ namespace Newtonsoft.Json.Converters
         /// <param name="serializer">The calling serializer.</param>
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
         {
+            if (value == null)
+            {
+                writer.WriteNull();
+                return;
+            }
+
             Regex regex = (Regex)value;
 
-            BsonWriter bsonWriter = writer as BsonWriter;
-            if (bsonWriter != null)
+#pragma warning disable 618
+            if (writer is BsonWriter bsonWriter)
+            {
                 WriteBson(bsonWriter, regex);
+            }
+#pragma warning restore 618
             else
+            {
                 WriteJson(writer, regex, serializer);
+            }
         }
 
         private bool HasFlag(RegexOptions options, RegexOptions flag)
@@ -61,6 +74,7 @@ namespace Newtonsoft.Json.Converters
             return ((options & flag) == flag);
         }
 
+#pragma warning disable 618
         private void WriteBson(BsonWriter writer, Regex regex)
         {
             // Regular expression - The first cstring is the regex pattern, the second
@@ -73,21 +87,30 @@ namespace Newtonsoft.Json.Converters
             string options = null;
 
             if (HasFlag(regex.Options, RegexOptions.IgnoreCase))
+            {
                 options += "i";
+            }
 
             if (HasFlag(regex.Options, RegexOptions.Multiline))
+            {
                 options += "m";
+            }
 
             if (HasFlag(regex.Options, RegexOptions.Singleline))
+            {
                 options += "s";
+            }
 
             options += "u";
 
             if (HasFlag(regex.Options, RegexOptions.ExplicitCapture))
+            {
                 options += "x";
+            }
 
             writer.WriteRegex(regex.ToString(), options);
         }
+#pragma warning restore 618
 
         private void WriteJson(JsonWriter writer, Regex regex, JsonSerializer serializer)
         {
@@ -111,11 +134,15 @@ namespace Newtonsoft.Json.Converters
         /// <returns>The object value.</returns>
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
         {
-            if (reader.TokenType == JsonToken.StartObject)
-                return ReadRegexObject(reader, serializer);
-
-            if (reader.TokenType == JsonToken.String)
-                return ReadRegexString(reader);
+            switch (reader.TokenType)
+            {
+                case JsonToken.StartObject:
+                    return ReadRegexObject(reader, serializer);
+                case JsonToken.String:
+                    return ReadRegexString(reader);
+                case JsonToken.Null:
+                    return null;
+            }
 
             throw JsonSerializationException.Create(reader, "Unexpected token when reading Regex.");
         }
@@ -123,32 +150,23 @@ namespace Newtonsoft.Json.Converters
         private object ReadRegexString(JsonReader reader)
         {
             string regexText = (string)reader.Value;
-            int patternOptionDelimiterIndex = regexText.LastIndexOf('/');
 
-            string patternText = regexText.Substring(1, patternOptionDelimiterIndex - 1);
-            string optionsText = regexText.Substring(patternOptionDelimiterIndex + 1);
-
-            RegexOptions options = RegexOptions.None;
-            foreach (char c in optionsText)
+            if (regexText.Length > 0 && regexText[0] == '/')
             {
-                switch (c)
+                int patternOptionDelimiterIndex = regexText.LastIndexOf('/');
+
+                if (patternOptionDelimiterIndex > 0)
                 {
-                    case 'i':
-                        options |= RegexOptions.IgnoreCase;
-                        break;
-                    case 'm':
-                        options |= RegexOptions.Multiline;
-                        break;
-                    case 's':
-                        options |= RegexOptions.Singleline;
-                        break;
-                    case 'x':
-                        options |= RegexOptions.ExplicitCapture;
-                        break;
+                    string patternText = regexText.Substring(1, patternOptionDelimiterIndex - 1);
+                    string optionsText = regexText.Substring(patternOptionDelimiterIndex + 1);
+
+                    RegexOptions options = MiscellaneousUtils.GetRegexOptions(optionsText);
+
+                    return new Regex(patternText, options);
                 }
             }
 
-            return new Regex(patternText, options);
+            throw JsonSerializationException.Create(reader, "Regex pattern must be enclosed by slashes.");
         }
 
         private Regex ReadRegexObject(JsonReader reader, JsonSerializer serializer)
@@ -164,20 +182,30 @@ namespace Newtonsoft.Json.Converters
                         string propertyName = reader.Value.ToString();
 
                         if (!reader.Read())
+                        {
                             throw JsonSerializationException.Create(reader, "Unexpected end when reading Regex.");
+                        }
 
                         if (string.Equals(propertyName, PatternName, StringComparison.OrdinalIgnoreCase))
+                        {
                             pattern = (string)reader.Value;
+                        }
                         else if (string.Equals(propertyName, OptionsName, StringComparison.OrdinalIgnoreCase))
+                        {
                             options = serializer.Deserialize<RegexOptions>(reader);
+                        }
                         else
+                        {
                             reader.Skip();
+                        }
                         break;
                     case JsonToken.Comment:
                         break;
                     case JsonToken.EndObject:
                         if (pattern == null)
+                        {
                             throw JsonSerializationException.Create(reader, "Error deserializing Regex. No pattern found.");
+                        }
 
                         return new Regex(pattern, options ?? RegexOptions.None);
                 }
@@ -194,6 +222,12 @@ namespace Newtonsoft.Json.Converters
         /// 	<c>true</c> if this instance can convert the specified object type; otherwise, <c>false</c>.
         /// </returns>
         public override bool CanConvert(Type objectType)
+        {
+            return objectType.Name == nameof(Regex) && IsRegex(objectType);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private bool IsRegex(Type objectType)
         {
             return (objectType == typeof(Regex));
         }

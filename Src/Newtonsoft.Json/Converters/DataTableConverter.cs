@@ -23,10 +23,11 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
+#if HAVE_ADO_NET
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using Newtonsoft.Json.Utilities;
-#if !(NETFX_CORE || PORTABLE40 || PORTABLE)
 using System;
 using System.Data;
 using Newtonsoft.Json.Serialization;
@@ -46,6 +47,12 @@ namespace Newtonsoft.Json.Converters
         /// <param name="serializer">The calling serializer.</param>
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
         {
+            if (value == null)
+            {
+                writer.WriteNull();
+                return;
+            }
+
             DataTable table = (DataTable)value;
             DefaultContractResolver resolver = serializer.ContractResolver as DefaultContractResolver;
 
@@ -56,11 +63,15 @@ namespace Newtonsoft.Json.Converters
                 writer.WriteStartObject();
                 foreach (DataColumn column in row.Table.Columns)
                 {
-                    if (serializer.NullValueHandling == NullValueHandling.Ignore && (row[column] == null || row[column] == DBNull.Value))
+                    object columnValue = row[column];
+
+                    if (serializer.NullValueHandling == NullValueHandling.Ignore && (columnValue == null || columnValue == DBNull.Value))
+                    {
                         continue;
+                    }
 
                     writer.WritePropertyName((resolver != null) ? resolver.GetResolvedPropertyName(column.ColumnName) : column.ColumnName);
-                    serializer.Serialize(writer, row[column]);
+                    serializer.Serialize(writer, columnValue);
                 }
                 writer.WriteEndObject();
             }
@@ -78,9 +89,12 @@ namespace Newtonsoft.Json.Converters
         /// <returns>The object value.</returns>
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
         {
-            DataTable dt = existingValue as DataTable;
+            if (reader.TokenType == JsonToken.Null)
+            {
+                return null;
+            }
 
-            if (dt == null)
+            if (!(existingValue is DataTable dt))
             {
                 // handle typed datasets
                 dt = (objectType == typeof(DataTable))
@@ -88,38 +102,47 @@ namespace Newtonsoft.Json.Converters
                     : (DataTable)Activator.CreateInstance(objectType);
             }
 
+            // DataTable is inside a DataSet
+            // populate the name from the property name
             if (reader.TokenType == JsonToken.PropertyName)
             {
                 dt.TableName = (string)reader.Value;
 
-                CheckedRead(reader);
+                reader.ReadAndAssert();
+
+                if (reader.TokenType == JsonToken.Null)
+                {
+                    return dt;
+                }
             }
 
             if (reader.TokenType != JsonToken.StartArray)
+            {
                 throw JsonSerializationException.Create(reader, "Unexpected JSON token when reading DataTable. Expected StartArray, got {0}.".FormatWith(CultureInfo.InvariantCulture, reader.TokenType));
+            }
 
-            CheckedRead(reader);
+            reader.ReadAndAssert();
 
             while (reader.TokenType != JsonToken.EndArray)
             {
-                CreateRow(reader, dt);
+                CreateRow(reader, dt, serializer);
 
-                CheckedRead(reader);
+                reader.ReadAndAssert();
             }
 
             return dt;
         }
 
-        private static void CreateRow(JsonReader reader, DataTable dt)
+        private static void CreateRow(JsonReader reader, DataTable dt, JsonSerializer serializer)
         {
             DataRow dr = dt.NewRow();
-            CheckedRead(reader);
+            reader.ReadAndAssert();
 
             while (reader.TokenType == JsonToken.PropertyName)
             {
                 string columnName = (string)reader.Value;
 
-                CheckedRead(reader);
+                reader.ReadAndAssert();
 
                 DataColumn column = dt.Columns[columnName];
                 if (column == null)
@@ -132,15 +155,17 @@ namespace Newtonsoft.Json.Converters
                 if (column.DataType == typeof(DataTable))
                 {
                     if (reader.TokenType == JsonToken.StartArray)
-                        CheckedRead(reader);
+                    {
+                        reader.ReadAndAssert();
+                    }
 
                     DataTable nestedDt = new DataTable();
 
                     while (reader.TokenType != JsonToken.EndArray)
                     {
-                        CreateRow(reader, nestedDt);
+                        CreateRow(reader, nestedDt, serializer);
 
-                        CheckedRead(reader);
+                        reader.ReadAndAssert();
                     }
 
                     dr[columnName] = nestedDt;
@@ -148,27 +173,33 @@ namespace Newtonsoft.Json.Converters
                 else if (column.DataType.IsArray && column.DataType != typeof(byte[]))
                 {
                     if (reader.TokenType == JsonToken.StartArray)
-                        CheckedRead(reader);
+                    {
+                        reader.ReadAndAssert();
+                    }
 
                     List<object> o = new List<object>();
 
                     while (reader.TokenType != JsonToken.EndArray)
                     {
                         o.Add(reader.Value);
-                        CheckedRead(reader);
+                        reader.ReadAndAssert();
                     }
 
                     Array destinationArray = Array.CreateInstance(column.DataType.GetElementType(), o.Count);
-                    Array.Copy(o.ToArray(), destinationArray, o.Count);
+                    ((IList)o).CopyTo(destinationArray, 0);
 
                     dr[columnName] = destinationArray;
                 }
                 else
                 {
-                    dr[columnName] = reader.Value ?? DBNull.Value;
+                    object columnValue = (reader.Value != null)
+                        ? serializer.Deserialize(reader, column.DataType) ?? DBNull.Value
+                        : DBNull.Value;
+
+                    dr[columnName] = columnValue;
                 }
 
-                CheckedRead(reader);
+                reader.ReadAndAssert();
             }
 
             dr.EndEdit();
@@ -190,23 +221,20 @@ namespace Newtonsoft.Json.Converters
                     return reader.ValueType;
                 case JsonToken.Null:
                 case JsonToken.Undefined:
+                case JsonToken.EndArray:
                     return typeof(string);
                 case JsonToken.StartArray:
-                    CheckedRead(reader);
+                    reader.ReadAndAssert();
                     if (reader.TokenType == JsonToken.StartObject)
+                    {
                         return typeof(DataTable); // nested datatable
+                    }
 
                     Type arrayType = GetColumnDataType(reader);
                     return arrayType.MakeArrayType();
                 default:
                     throw JsonSerializationException.Create(reader, "Unexpected JSON token when reading DataTable: {0}".FormatWith(CultureInfo.InvariantCulture, tokenType));
             }
-        }
-
-        private static void CheckedRead(JsonReader reader)
-        {
-            if (!reader.Read())
-                throw JsonSerializationException.Create(reader, "Unexpected end when reading DataTable.");
         }
 
         /// <summary>

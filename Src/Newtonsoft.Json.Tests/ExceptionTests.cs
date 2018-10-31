@@ -24,17 +24,18 @@
 #endregion
 
 using System;
+using System.IO;
+#if !(PORTABLE || DNXCORE50) || NETSTANDARD2_0
+using System.Runtime.Serialization.Formatters.Binary;
+#endif
 using Newtonsoft.Json.Schema;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
 #else
 using NUnit.Framework;
+
 #endif
 
 namespace Newtonsoft.Json.Tests
@@ -87,6 +88,7 @@ namespace Newtonsoft.Json.Tests
             Assert.AreEqual("Inner!", exception.InnerException.Message);
         }
 
+#pragma warning disable 618
         [Test]
         public void JsonSchemaException()
         {
@@ -101,5 +103,19 @@ namespace Newtonsoft.Json.Tests
             Assert.AreEqual("Message!", exception.Message);
             Assert.AreEqual("Inner!", exception.InnerException.Message);
         }
+#pragma warning restore 618
+
+#if !(PORTABLE || PORTABLE40 || DNXCORE50) || NETSTANDARD2_0
+        [Test]
+        public void BinarySerializeException()
+        {
+            JsonReaderException exception = new JsonReaderException("message!");
+            using (var memoryStream = new MemoryStream())
+            {
+                var binaryFormatter = new BinaryFormatter();
+                binaryFormatter.Serialize(memoryStream, exception);
+            }
+        }
+#endif
     }
 }

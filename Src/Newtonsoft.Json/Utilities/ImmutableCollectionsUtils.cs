@@ -23,17 +23,24 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
-#if !(NET20 || NET35 || NET40 || PORTABLE40)
 using System;
 using System.Collections.Generic;
+#if !HAVE_LINQ
+using Newtonsoft.Json.Utilities.LinqBridge;
+#else
 using System.Linq;
+#endif
 using System.Reflection;
 using System.Text;
-using System.Threading.Tasks;
 using Newtonsoft.Json.Serialization;
 
 namespace Newtonsoft.Json.Utilities
 {
+    /// <summary>
+    /// Helper class for serializing immutable collections.
+    /// Note that this is used by all builds, even those that don't support immutable collections, in case the DLL is GACed
+    /// https://github.com/JamesNK/Newtonsoft.Json/issues/652
+    /// </summary>
     internal static class ImmutableCollectionsUtils
     {
         internal class ImmutableCollectionTypeInfo
@@ -122,7 +129,7 @@ namespace Newtonsoft.Json.Utilities
                         {
                             createdType = createdTypeDefinition.MakeGenericType(collectionItemType);
                             MethodInfo method = mb.MakeGenericMethod(collectionItemType);
-                            parameterizedCreator = JsonTypeReflector.ReflectionDelegateFactory.CreateParametrizedConstructor(method);
+                            parameterizedCreator = JsonTypeReflector.ReflectionDelegateFactory.CreateParameterizedConstructor(method);
                             return true;
                         }
                     }
@@ -145,8 +152,8 @@ namespace Newtonsoft.Json.Utilities
                 if (definition != null)
                 {
                     Type createdTypeDefinition = underlyingTypeDefinition.Assembly().GetType(definition.CreatedTypeName);
-                    Type builderTypeDefinition = underlyingTypeDefinition.Assembly().GetType(definition.BuilderTypeName); 
-                    
+                    Type builderTypeDefinition = underlyingTypeDefinition.Assembly().GetType(definition.BuilderTypeName);
+
                     if (createdTypeDefinition != null && builderTypeDefinition != null)
                     {
                         MethodInfo mb = builderTypeDefinition.GetMethods().FirstOrDefault(m =>
@@ -159,7 +166,7 @@ namespace Newtonsoft.Json.Utilities
                         {
                             createdType = createdTypeDefinition.MakeGenericType(keyItemType, valueItemType);
                             MethodInfo method = mb.MakeGenericMethod(keyItemType, valueItemType);
-                            parameterizedCreator = JsonTypeReflector.ReflectionDelegateFactory.CreateParametrizedConstructor(method);
+                            parameterizedCreator = JsonTypeReflector.ReflectionDelegateFactory.CreateParameterizedConstructor(method);
                             return true;
                         }
                     }
@@ -172,4 +179,3 @@ namespace Newtonsoft.Json.Utilities
         }
     }
 }
-#endif

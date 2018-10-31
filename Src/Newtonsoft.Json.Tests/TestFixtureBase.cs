@@ -29,19 +29,14 @@ using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Text.RegularExpressions;
-#if NET20
+#if (NET20 || NET35)
 using Newtonsoft.Json.Serialization;
 #else
 using System.Runtime.Serialization.Json;
 #endif
 using System.Text;
 using System.Threading;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using TestMethod = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-using SetUp = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestInitializeAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
 using XAssert = Xunit.Assert;
@@ -50,10 +45,15 @@ using NUnit.Framework;
 #endif
 using Newtonsoft.Json.Utilities;
 using System.Collections;
+#if !(NET20 || NET35 || NET40 || PORTABLE40)
+using System.Threading.Tasks;
+#endif
 #if NET20
 using Newtonsoft.Json.Utilities.LinqBridge;
+using Action = Newtonsoft.Json.Serialization.Action;
 #else
 using System.Linq;
+
 #endif
 
 namespace Newtonsoft.Json.Tests
@@ -62,7 +62,7 @@ namespace Newtonsoft.Json.Tests
     {
         public static IEnumerable<ConstructorInfo> GetConstructors(Type type)
         {
-#if !(NETFX_CORE || ASPNETCORE50)
+#if !(DNXCORE50)
             return type.GetConstructors();
 #else
             return type.GetTypeInfo().DeclaredConstructors;
@@ -71,7 +71,7 @@ namespace Newtonsoft.Json.Tests
 
         public static PropertyInfo GetProperty(Type type, string name)
         {
-#if !(NETFX_CORE || ASPNETCORE50)
+#if !(DNXCORE50)
             return type.GetProperty(name);
 #else
             return type.GetTypeInfo().GetDeclaredProperty(name);
@@ -80,7 +80,7 @@ namespace Newtonsoft.Json.Tests
 
         public static FieldInfo GetField(Type type, string name)
         {
-#if !(NETFX_CORE || ASPNETCORE50)
+#if !(DNXCORE50)
             return type.GetField(name);
 #else
             return type.GetTypeInfo().GetDeclaredField(name);
@@ -89,7 +89,7 @@ namespace Newtonsoft.Json.Tests
 
         public static MethodInfo GetMethod(Type type, string name)
         {
-#if !(NETFX_CORE || ASPNETCORE50)
+#if !(DNXCORE50)
             return type.GetMethod(name);
 #else
             return type.GetTypeInfo().GetDeclaredMethod(name);
@@ -97,7 +97,7 @@ namespace Newtonsoft.Json.Tests
         }
     }
 
-#if ASPNETCORE50
+#if DNXCORE50
     public class TestFixtureAttribute : Attribute
     {
         // xunit doesn't need a test fixture attribute
@@ -139,9 +139,15 @@ namespace Newtonsoft.Json.Tests
         public static void Fail(string message = null, params object[] args)
         {
             if (message != null)
+            {
                 message = message.FormatWith(CultureInfo.InvariantCulture, args);
+            }
 
             XAssert.True(false, message);
+        }
+
+        public static void Pass()
+        {
         }
 
         public static void IsTrue(bool condition, string message = null)
@@ -192,7 +198,7 @@ namespace Newtonsoft.Json.Tests
     [TestFixture]
     public abstract class TestFixtureBase
     {
-#if !NET20
+#if !(NET20 || NET35)
         protected string GetDataContractJsonSerializeResult(object o)
         {
             MemoryStream ms = new MemoryStream();
@@ -203,6 +209,15 @@ namespace Newtonsoft.Json.Tests
             return Encoding.UTF8.GetString(data, 0, data.Length);
         }
 #endif
+
+        public static string ResolvePath(string path)
+        {
+#if !DNXCORE50
+            return Path.Combine(TestContext.CurrentContext.TestDirectory, path);
+#else
+            return path;
+#endif
+        }
 
         protected string GetOffset(DateTime d, DateFormatHandling dateFormatHandling)
         {
@@ -221,12 +236,14 @@ namespace Newtonsoft.Json.Tests
         {
             string hex = BitConverter.ToString(bytes);
             if (removeDashes)
+            {
                 hex = hex.Replace("-", "");
+            }
 
             return hex;
         }
 
-        protected byte[] HexToBytes(string hex)
+        public static byte[] HexToBytes(string hex)
         {
             string fixedHex = hex.Replace("-", string.Empty);
 
@@ -243,29 +260,41 @@ namespace Newtonsoft.Json.Tests
                 // the % 32 handles lower case characters
                 int b = (c - '0') % 32;
                 // correction for a-f
-                if (b > 9) b -= 7;
+                if (b > 9)
+                {
+                    b -= 7;
+                }
                 // store nibble (4 bits) in byte array
                 bytes[offset] |= (byte)(b << shift);
                 // toggle the shift variable between 0 and 4
                 shift ^= 4;
                 // move to next byte
-                if (shift != 0) offset++;
+                if (shift != 0)
+                {
+                    offset++;
+                }
             }
             return bytes;
         }
 
-#if ASPNETCORE50
+#if DNXCORE50
         protected TestFixtureBase()
 #else
         [SetUp]
         protected void TestSetup()
 #endif
         {
-//#if !NETFX_CORE
-//            CultureInfo turkey = CultureInfo.CreateSpecificCulture("tr");
-//            Thread.CurrentThread.CurrentCulture = turkey;
-//            Thread.CurrentThread.CurrentUICulture = turkey;
-//#endif
+#if !(DNXCORE50)
+            //CultureInfo turkey = CultureInfo.CreateSpecificCulture("tr");
+            //Thread.CurrentThread.CurrentCulture = turkey;
+            //Thread.CurrentThread.CurrentUICulture = turkey;
+
+            Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
+            Thread.CurrentThread.CurrentUICulture = CultureInfo.InvariantCulture;
+#else
+            // suppress writing to console with dotnet test to keep build log size small
+            Console.SetOut(new StringWriter());
+#endif
 
             JsonConvert.DefaultSettings = null;
         }
@@ -281,25 +310,11 @@ namespace Newtonsoft.Json.Tests
         }
     }
 
-#if NETFX_CORE
-  public static class Console
-  {
-    public static void WriteLine(params object[] args)
-    {
-    }
-  }
-#endif
-
     public static class CustomAssert
     {
         public static void IsInstanceOfType(Type t, object instance)
         {
-#if NETFX_CORE
-            if (!instance.GetType().IsAssignableFrom(t))
-                throw new Exception("Not instance of type");
-#else
             Assert.IsInstanceOf(t, instance);
-#endif
         }
 
         public static void Contains(IList collection, object value)
@@ -309,18 +324,20 @@ namespace Newtonsoft.Json.Tests
 
         public static void Contains(IList collection, object value, string message)
         {
-#if !(NETFX_CORE || ASPNETCORE50)
+#if !(DNXCORE50)
             Assert.Contains(value, collection, message);
 #else
             if (!collection.Cast<object>().Any(i => i.Equals(value)))
+            {
                 throw new Exception(message ?? "Value not found in collection.");
+            }
 #endif
         }
     }
 
     public static class StringAssert
     {
-        private readonly static Regex Regex = new Regex(@"\r\n|\n\r|\n|\r", RegexOptions.CultureInvariant);
+        private static readonly Regex Regex = new Regex(@"\r\n|\n\r|\n|\r", RegexOptions.CultureInvariant);
 
         public static void AreEqual(string expected, string actual)
         {
@@ -341,7 +358,9 @@ namespace Newtonsoft.Json.Tests
         public static string Normalize(string s)
         {
             if (s != null)
+            {
                 s = Regex.Replace(s, "\r\n");
+            }
 
             return s;
         }
@@ -349,7 +368,7 @@ namespace Newtonsoft.Json.Tests
 
     public static class ExceptionAssert
     {
-        public static void Throws<TException>(Action action, params string[] possibleMessages)
+        public static TException Throws<TException>(Action action, params string[] possibleMessages)
             where TException : Exception
         {
             try
@@ -357,29 +376,63 @@ namespace Newtonsoft.Json.Tests
                 action();
 
                 Assert.Fail("Exception of type {0} expected. No exception thrown.", typeof(TException).Name);
+                return null;
             }
             catch (TException ex)
             {
-                if (possibleMessages != null && possibleMessages.Length > 0)
+                if (possibleMessages == null || possibleMessages.Length == 0)
                 {
-                    bool match = false;
-                    foreach (string possibleMessage in possibleMessages)
-                    {
-                        if (StringAssert.Equals(possibleMessage, ex.Message))
-                        {
-                            match = true;
-                            break;
-                        }
-                    }
-
-                    if (!match)
-                        throw new Exception("Unexpected exception message." + Environment.NewLine + "Expected one of: " + string.Join(Environment.NewLine, possibleMessages) + Environment.NewLine + "Got: " + ex.Message + Environment.NewLine + Environment.NewLine + ex);
+                    return ex;
                 }
+                foreach (string possibleMessage in possibleMessages)
+                {
+                    if (StringAssert.Equals(possibleMessage, ex.Message))
+                    {
+                        return ex;
+                    }
+                }
+
+                throw new Exception("Unexpected exception message." + Environment.NewLine + "Expected one of: " + string.Join(Environment.NewLine, possibleMessages) + Environment.NewLine + "Got: " + ex.Message + Environment.NewLine + Environment.NewLine + ex);
             }
             catch (Exception ex)
             {
                 throw new Exception(string.Format("Exception of type {0} expected; got exception of type {1}.", typeof(TException).Name, ex.GetType().Name), ex);
             }
         }
+
+#if !(NET20 || NET35 || NET40 || PORTABLE40)
+        public static async Task<TException> ThrowsAsync<TException>(Func<Task> action, params string[] possibleMessages)
+            where TException : Exception
+        {
+            try
+            {
+                await action();
+
+                Assert.Fail("Exception of type {0} expected. No exception thrown.", typeof(TException).Name);
+                return null;
+            }
+            catch (TException ex)
+            {
+                if (possibleMessages == null || possibleMessages.Length == 0)
+                {
+                    return ex;
+                }
+                foreach (string possibleMessage in possibleMessages)
+                {
+                    if (StringAssert.Equals(possibleMessage, ex.Message))
+                    {
+                        return ex;
+                    }
+                }
+
+                throw new Exception("Unexpected exception message." + Environment.NewLine + "Expected one of: " + string.Join(Environment.NewLine, possibleMessages) + Environment.NewLine + "Got: " + ex.Message + Environment.NewLine + Environment.NewLine + ex);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception(string.Format("Exception of type {0} expected; got exception of type {1}.", typeof(TException).Name, ex.GetType().Name), ex);
+            }
+        }
+#endif
+
     }
 }

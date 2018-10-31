@@ -1,10 +1,7 @@
+using System;
 using System.Reflection;
 using Newtonsoft.Json.Utilities;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
@@ -15,6 +12,7 @@ using NUnit.Framework;
 using Newtonsoft.Json.Utilities.LinqBridge;
 #else
 using System.Linq;
+
 #endif
 
 namespace Newtonsoft.Json.Tests.Utilities
@@ -46,15 +44,59 @@ namespace Newtonsoft.Json.Tests.Utilities
         }
     }
 
+    public class InTestClass
+    {
+        public string Value { get; }
+        public bool B1 { get; }
+
+        public InTestClass(in string value)
+        {
+            Value = value;
+        }
+
+        public InTestClass(in string value, in bool b1)
+            : this(in value)
+        {
+            B1 = b1;
+        }
+    }
+
     [TestFixture]
     public class LateboundReflectionDelegateFactoryTests : TestFixtureBase
     {
+        [Test]
+        public void ConstructorWithInString()
+        {
+            ConstructorInfo constructor = TestReflectionUtils.GetConstructors(typeof(InTestClass)).Single(c => c.GetParameters().Count() == 1);
+
+            var creator = LateBoundReflectionDelegateFactory.Instance.CreateParameterizedConstructor(constructor);
+
+            object[] args = new object[] { "Value" };
+            InTestClass o = (InTestClass)creator(args);
+            Assert.IsNotNull(o);
+            Assert.AreEqual("Value", o.Value);
+        }
+
+        [Test]
+        public void ConstructorWithInStringAndBool()
+        {
+            ConstructorInfo constructor = TestReflectionUtils.GetConstructors(typeof(InTestClass)).Single(c => c.GetParameters().Count() == 2);
+
+            var creator = LateBoundReflectionDelegateFactory.Instance.CreateParameterizedConstructor(constructor);
+
+            object[] args = new object[] { "Value", true };
+            InTestClass o = (InTestClass)creator(args);
+            Assert.IsNotNull(o);
+            Assert.AreEqual("Value", o.Value);
+            Assert.AreEqual(true, o.B1);
+        }
+
         [Test]
         public void ConstructorWithRefString()
         {
             ConstructorInfo constructor = TestReflectionUtils.GetConstructors(typeof(OutAndRefTestClass)).Single(c => c.GetParameters().Count() == 1);
 
-            var creator = LateBoundReflectionDelegateFactory.Instance.CreateParametrizedConstructor(constructor);
+            var creator = LateBoundReflectionDelegateFactory.Instance.CreateParameterizedConstructor(constructor);
 
             object[] args = new object[] { "Input" };
             OutAndRefTestClass o = (OutAndRefTestClass)creator(args);
@@ -67,7 +109,7 @@ namespace Newtonsoft.Json.Tests.Utilities
         {
             ConstructorInfo constructor = TestReflectionUtils.GetConstructors(typeof(OutAndRefTestClass)).Single(c => c.GetParameters().Count() == 2);
 
-            var creator = LateBoundReflectionDelegateFactory.Instance.CreateParametrizedConstructor(constructor);
+            var creator = LateBoundReflectionDelegateFactory.Instance.CreateParameterizedConstructor(constructor);
 
             object[] args = new object[] { "Input", null };
             OutAndRefTestClass o = (OutAndRefTestClass)creator(args);
@@ -80,7 +122,7 @@ namespace Newtonsoft.Json.Tests.Utilities
         {
             ConstructorInfo constructor = TestReflectionUtils.GetConstructors(typeof(OutAndRefTestClass)).Single(c => c.GetParameters().Count() == 3);
 
-            var creator = LateBoundReflectionDelegateFactory.Instance.CreateParametrizedConstructor(constructor);
+            var creator = LateBoundReflectionDelegateFactory.Instance.CreateParameterizedConstructor(constructor);
 
             object[] args = new object[] { "Input", true, null };
             OutAndRefTestClass o = (OutAndRefTestClass)creator(args);
@@ -88,6 +130,17 @@ namespace Newtonsoft.Json.Tests.Utilities
             Assert.AreEqual("Input", o.Input);
             Assert.AreEqual(true, o.B1);
             Assert.AreEqual(false, o.B2);
+        }
+    }
+
+    public struct MyStruct
+    {
+        private int _intProperty;
+
+        public int IntProperty
+        {
+            get { return _intProperty; }
+            set { _intProperty = value; }
         }
     }
 }

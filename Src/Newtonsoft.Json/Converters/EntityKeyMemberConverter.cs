@@ -23,7 +23,7 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
-#if !(NET20 || NETFX_CORE || PORTABLE40 || PORTABLE)
+#if HAVE_ENTITY_FRAMEWORK
 using System;
 using Newtonsoft.Json.Serialization;
 using System.Globalization;
@@ -32,7 +32,7 @@ using Newtonsoft.Json.Utilities;
 namespace Newtonsoft.Json.Converters
 {
     /// <summary>
-    /// Converts an Entity Framework EntityKey to and from JSON.
+    /// Converts an Entity Framework <see cref="T:System.Data.EntityKeyMember"/> to and from JSON.
     /// </summary>
     public class EntityKeyMemberConverter : JsonConverter
     {
@@ -59,23 +59,26 @@ namespace Newtonsoft.Json.Converters
             string keyName = (string)_reflectionObject.GetValue(value, KeyPropertyName);
             object keyValue = _reflectionObject.GetValue(value, ValuePropertyName);
 
-            Type keyValueType = (keyValue != null) ? keyValue.GetType() : null;
+            Type keyValueType = keyValue?.GetType();
 
             writer.WriteStartObject();
             writer.WritePropertyName((resolver != null) ? resolver.GetResolvedPropertyName(KeyPropertyName) : KeyPropertyName);
             writer.WriteValue(keyName);
             writer.WritePropertyName((resolver != null) ? resolver.GetResolvedPropertyName(TypePropertyName) : TypePropertyName);
-            writer.WriteValue((keyValueType != null) ? keyValueType.FullName : null);
+            writer.WriteValue(keyValueType?.FullName);
 
             writer.WritePropertyName((resolver != null) ? resolver.GetResolvedPropertyName(ValuePropertyName) : ValuePropertyName);
 
             if (keyValueType != null)
             {
-                string valueJson;
-                if (JsonSerializerInternalWriter.TryConvertToString(keyValue, keyValueType, out valueJson))
+                if (JsonSerializerInternalWriter.TryConvertToString(keyValue, keyValueType, out string valueJson))
+                {
                     writer.WriteValue(valueJson);
+                }
                 else
+                {
                     writer.WriteValue(keyValue);
+                }
             }
             else
             {
@@ -87,16 +90,12 @@ namespace Newtonsoft.Json.Converters
 
         private static void ReadAndAssertProperty(JsonReader reader, string propertyName)
         {
-            ReadAndAssert(reader);
+            reader.ReadAndAssert();
 
             if (reader.TokenType != JsonToken.PropertyName || !string.Equals(reader.Value.ToString(), propertyName, StringComparison.OrdinalIgnoreCase))
+            {
                 throw new JsonSerializationException("Expected JSON property '{0}'.".FormatWith(CultureInfo.InvariantCulture, propertyName));
-        }
-
-        private static void ReadAndAssert(JsonReader reader)
-        {
-            if (!reader.Read())
-                throw new JsonSerializationException("Unexpected end.");
+            }
         }
 
         /// <summary>
@@ -114,20 +113,20 @@ namespace Newtonsoft.Json.Converters
             object entityKeyMember = _reflectionObject.Creator();
 
             ReadAndAssertProperty(reader, KeyPropertyName);
-            ReadAndAssert(reader);
+            reader.ReadAndAssert();
             _reflectionObject.SetValue(entityKeyMember, KeyPropertyName, reader.Value.ToString());
 
             ReadAndAssertProperty(reader, TypePropertyName);
-            ReadAndAssert(reader);
+            reader.ReadAndAssert();
             string type = reader.Value.ToString();
 
             Type t = Type.GetType(type);
 
             ReadAndAssertProperty(reader, ValuePropertyName);
-            ReadAndAssert(reader);
+            reader.ReadAndAssert();
             _reflectionObject.SetValue(entityKeyMember, ValuePropertyName, serializer.Deserialize(reader, t));
 
-            ReadAndAssert(reader);
+            reader.ReadAndAssert();
 
             return entityKeyMember;
         }
@@ -135,7 +134,9 @@ namespace Newtonsoft.Json.Converters
         private static void EnsureReflectionObject(Type objectType)
         {
             if (_reflectionObject == null)
+            {
                 _reflectionObject = ReflectionObject.Create(objectType, KeyPropertyName, ValuePropertyName);
+            }
         }
 
         /// <summary>
@@ -147,8 +148,9 @@ namespace Newtonsoft.Json.Converters
         /// </returns>
         public override bool CanConvert(Type objectType)
         {
-            return objectType.AssignableToTypeName(EntityKeyMemberFullTypeName);
+            return objectType.AssignableToTypeName(EntityKeyMemberFullTypeName, false);
         }
     }
 }
+
 #endif

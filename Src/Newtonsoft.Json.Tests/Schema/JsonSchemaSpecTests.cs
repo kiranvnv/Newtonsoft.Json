@@ -23,16 +23,27 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
-#if !(ASPNETCORE50 || NETFX_CORE)
+#pragma warning disable 618
 using System;
 using System.Collections.Generic;
 using System.IO;
+#if NET20
+using Newtonsoft.Json.Utilities.LinqBridge;
+#else
 using System.Linq;
+#endif
 using System.Reflection;
 using System.Text;
-using NUnit.Framework;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
+#if DNXCORE50
+using Xunit;
+using Test = Xunit.FactAttribute;
+using Assert = Newtonsoft.Json.Tests.XUnitAssert;
+using TestCaseSource = Xunit.MemberDataAttribute;
+#else
+using NUnit.Framework;
+#endif
 
 namespace Newtonsoft.Json.Tests.Schema
 {
@@ -55,30 +66,27 @@ namespace Newtonsoft.Json.Tests.Schema
     [TestFixture]
     public class JsonSchemaSpecTests : TestFixtureBase
     {
-        [TestCaseSourceAttribute("GetSpecTestDetails")]
+#if DNXCORE50
+        [Theory]
+#endif
+        [TestCaseSource(nameof(GetSpecTestDetails))]
         public void SpecTest(JsonSchemaSpecTest jsonSchemaSpecTest)
         {
-            //if (jsonSchemaSpecTest.ToString() == "enum.json - simple enum validation - something else is invalid")
-            {
-                Console.WriteLine("Running JSON Schema test " + jsonSchemaSpecTest.TestNumber + ": " + jsonSchemaSpecTest);
+            JsonSchema s = JsonSchema.Read(jsonSchemaSpecTest.Schema.CreateReader());
 
-                JsonSchema s = JsonSchema.Read(jsonSchemaSpecTest.Schema.CreateReader());
+            IList<string> e;
+            bool v = jsonSchemaSpecTest.Data.IsValid(s, out e);
+            string[] errorMessages = ((e != null) ? e.ToArray() : null) ?? new string[0];
 
-                IList<string> errorMessages;
-                bool v = jsonSchemaSpecTest.Data.IsValid(s, out errorMessages);
-                errorMessages = errorMessages ?? new List<string>();
-
-                Assert.AreEqual(jsonSchemaSpecTest.IsValid, v, jsonSchemaSpecTest.TestCaseDescription + " - " + jsonSchemaSpecTest.TestDescription + " - errors: " + string.Join(", ", errorMessages));
-            }
+            Assert.AreEqual(jsonSchemaSpecTest.IsValid, v, jsonSchemaSpecTest.TestCaseDescription + " - " + jsonSchemaSpecTest.TestDescription + " - errors: " + string.Join(", ", errorMessages));
         }
 
-        public IList<JsonSchemaSpecTest> GetSpecTestDetails()
+        public static IList<object[]> GetSpecTestDetails()
         {
             IList<JsonSchemaSpecTest> specTests = new List<JsonSchemaSpecTest>();
 
             // get test files location relative to the test project dll
-            string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-            string baseTestPath = Path.Combine(baseDirectory, "Schema", "Specs");
+            string baseTestPath = ResolvePath(Path.Combine("Schema", "Specs"));
 
             string[] testFiles = Directory.GetFiles(baseTestPath, "*.json", SearchOption.AllDirectories);
 
@@ -115,8 +123,8 @@ namespace Newtonsoft.Json.Tests.Schema
                                              && s.TestCaseDescription != "when types includes a schema it should fully validate the schema"
                                              && s.TestCaseDescription != "types can include schemas").ToList();
 
-            return specTests;
+            return specTests.Select(s => new object[] { s }).ToList();
         }
     }
 }
-#endif
+#pragma warning restore 618

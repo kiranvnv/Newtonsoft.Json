@@ -28,7 +28,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 using System.Globalization;
-#if NET20
+#if !HAVE_LINQ
 using Newtonsoft.Json.Utilities.LinqBridge;
 #else
 using System.Linq;
@@ -50,17 +50,21 @@ namespace Newtonsoft.Json.Utilities
 
         public CollectionWrapper(IList list)
         {
-            ValidationUtils.ArgumentNotNull(list, "list");
+            ValidationUtils.ArgumentNotNull(list, nameof(list));
 
-            if (list is ICollection<T>)
-                _genericCollection = (ICollection<T>)list;
+            if (list is ICollection<T> collection)
+            {
+                _genericCollection = collection;
+            }
             else
+            {
                 _list = list;
+            }
         }
 
         public CollectionWrapper(ICollection<T> list)
         {
-            ValidationUtils.ArgumentNotNull(list, "list");
+            ValidationUtils.ArgumentNotNull(list, nameof(list));
 
             _genericCollection = list;
         }
@@ -68,33 +72,49 @@ namespace Newtonsoft.Json.Utilities
         public virtual void Add(T item)
         {
             if (_genericCollection != null)
+            {
                 _genericCollection.Add(item);
+            }
             else
+            {
                 _list.Add(item);
+            }
         }
 
         public virtual void Clear()
         {
             if (_genericCollection != null)
+            {
                 _genericCollection.Clear();
+            }
             else
+            {
                 _list.Clear();
+            }
         }
 
         public virtual bool Contains(T item)
         {
             if (_genericCollection != null)
+            {
                 return _genericCollection.Contains(item);
+            }
             else
+            {
                 return _list.Contains(item);
+            }
         }
 
         public virtual void CopyTo(T[] array, int arrayIndex)
         {
             if (_genericCollection != null)
+            {
                 _genericCollection.CopyTo(array, arrayIndex);
+            }
             else
+            {
                 _list.CopyTo(array, arrayIndex);
+            }
         }
 
         public virtual int Count
@@ -102,9 +122,13 @@ namespace Newtonsoft.Json.Utilities
             get
             {
                 if (_genericCollection != null)
+                {
                     return _genericCollection.Count;
+                }
                 else
+                {
                     return _list.Count;
+                }
             }
         }
 
@@ -113,9 +137,13 @@ namespace Newtonsoft.Json.Utilities
             get
             {
                 if (_genericCollection != null)
+                {
                     return _genericCollection.IsReadOnly;
+                }
                 else
+                {
                     return _list.IsReadOnly;
+                }
             }
         }
 
@@ -130,7 +158,9 @@ namespace Newtonsoft.Json.Utilities
                 bool contains = _list.Contains(item);
 
                 if (contains)
+                {
                     _list.Remove(item);
+                }
 
                 return contains;
             }
@@ -138,18 +168,12 @@ namespace Newtonsoft.Json.Utilities
 
         public virtual IEnumerator<T> GetEnumerator()
         {
-            if (_genericCollection != null)
-                return _genericCollection.GetEnumerator();
-
-            return _list.Cast<T>().GetEnumerator();
+            return (_genericCollection ?? _list.Cast<T>()).GetEnumerator();
         }
 
         IEnumerator IEnumerable.GetEnumerator()
         {
-            if (_genericCollection != null)
-                return _genericCollection.GetEnumerator();
-            else
-                return _list.GetEnumerator();
+            return ((IEnumerable)_genericCollection ?? _list).GetEnumerator();
         }
 
         int IList.Add(object value)
@@ -163,7 +187,9 @@ namespace Newtonsoft.Json.Utilities
         bool IList.Contains(object value)
         {
             if (IsCompatibleObject(value))
+            {
                 return Contains((T)value);
+            }
 
             return false;
         }
@@ -171,10 +197,14 @@ namespace Newtonsoft.Json.Utilities
         int IList.IndexOf(object value)
         {
             if (_genericCollection != null)
+            {
                 throw new InvalidOperationException("Wrapped ICollection<T> does not support IndexOf.");
+            }
 
             if (IsCompatibleObject(value))
+            {
                 return _list.IndexOf((T)value);
+            }
 
             return -1;
         }
@@ -182,7 +212,9 @@ namespace Newtonsoft.Json.Utilities
         void IList.RemoveAt(int index)
         {
             if (_genericCollection != null)
+            {
                 throw new InvalidOperationException("Wrapped ICollection<T> does not support RemoveAt.");
+            }
 
             _list.RemoveAt(index);
         }
@@ -190,7 +222,9 @@ namespace Newtonsoft.Json.Utilities
         void IList.Insert(int index, object value)
         {
             if (_genericCollection != null)
+            {
                 throw new InvalidOperationException("Wrapped ICollection<T> does not support Insert.");
+            }
 
             VerifyValueType(value);
             _list.Insert(index, (T)value);
@@ -201,17 +235,23 @@ namespace Newtonsoft.Json.Utilities
             get
             {
                 if (_genericCollection != null)
+                {
                     // ICollection<T> only has IsReadOnly
                     return _genericCollection.IsReadOnly;
+                }
                 else
+                {
                     return _list.IsFixedSize;
+                }
             }
         }
 
         void IList.Remove(object value)
         {
             if (IsCompatibleObject(value))
+            {
                 Remove((T)value);
+            }
         }
 
         object IList.this[int index]
@@ -219,14 +259,18 @@ namespace Newtonsoft.Json.Utilities
             get
             {
                 if (_genericCollection != null)
+                {
                     throw new InvalidOperationException("Wrapped ICollection<T> does not support indexer.");
+                }
 
                 return _list[index];
             }
             set
             {
                 if (_genericCollection != null)
+                {
                     throw new InvalidOperationException("Wrapped ICollection<T> does not support indexer.");
+                }
 
                 VerifyValueType(value);
                 _list[index] = (T)value;
@@ -238,17 +282,16 @@ namespace Newtonsoft.Json.Utilities
             CopyTo((T[])array, arrayIndex);
         }
 
-        bool ICollection.IsSynchronized
-        {
-            get { return false; }
-        }
+        bool ICollection.IsSynchronized => false;
 
         object ICollection.SyncRoot
         {
             get
             {
                 if (_syncRoot == null)
+                {
                     Interlocked.CompareExchange(ref _syncRoot, new object(), null);
+                }
 
                 return _syncRoot;
             }
@@ -257,26 +300,21 @@ namespace Newtonsoft.Json.Utilities
         private static void VerifyValueType(object value)
         {
             if (!IsCompatibleObject(value))
-                throw new ArgumentException("The value '{0}' is not of type '{1}' and cannot be used in this generic collection.".FormatWith(CultureInfo.InvariantCulture, value, typeof(T)), "value");
+            {
+                throw new ArgumentException("The value '{0}' is not of type '{1}' and cannot be used in this generic collection.".FormatWith(CultureInfo.InvariantCulture, value, typeof(T)), nameof(value));
+            }
         }
 
         private static bool IsCompatibleObject(object value)
         {
             if (!(value is T) && (value != null || (typeof(T).IsValueType() && !ReflectionUtils.IsNullableType(typeof(T)))))
+            {
                 return false;
+            }
 
             return true;
         }
 
-        public object UnderlyingCollection
-        {
-            get
-            {
-                if (_genericCollection != null)
-                    return _genericCollection;
-                else
-                    return _list;
-            }
-        }
+        public object UnderlyingCollection => (object)_genericCollection ?? _list;
     }
 }

@@ -23,7 +23,12 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
-#if !(PORTABLE || PORTABLE40)
+#if NET20
+using Newtonsoft.Json.Utilities.LinqBridge;
+#else
+using System.Linq;
+#endif
+#if !(PORTABLE || PORTABLE40) || NETSTANDARD2_0
 using System.Collections.ObjectModel;
 #if !(NET35 || NET20)
 using System.Dynamic;
@@ -38,11 +43,8 @@ using System.Runtime.Serialization.Formatters;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using Newtonsoft.Json.Tests.TestObjects;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif ASPNETCORE50
+using Newtonsoft.Json.Tests.TestObjects.Organization;
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
@@ -53,12 +55,104 @@ using Newtonsoft.Json.Utilities;
 using System.Net;
 using System.Runtime.Serialization;
 using System.IO;
+using System.Reflection;
 
 namespace Newtonsoft.Json.Tests.Serialization
 {
     [TestFixture]
     public class TypeNameHandlingTests : TestFixtureBase
     {
+
+        [Test]
+        public void DeserializeByteArrayWithTypeName()
+        {
+            string json = @"{
+  ""$type"": ""Newtonsoft.Json.Tests.TestObjects.HasByteArray, Newtonsoft.Json.Tests"",
+  ""EncryptedPassword"": {
+    ""$type"": ""System.Byte[], mscorlib"",
+    ""$value"": ""cGFzc3dvcmQ=""
+  }
+}";
+            HasByteArray value = JsonConvert.DeserializeObject<HasByteArray>(json, new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.Objects
+            });
+
+            CollectionAssert.AreEquivalent(Convert.FromBase64String("cGFzc3dvcmQ="), value.EncryptedPassword);
+        }
+
+        [Test]
+        public void DeserializeByteArrayWithTypeName_BadAdditionalContent()
+        {
+            string json = @"{
+  ""$type"": ""Newtonsoft.Json.Tests.TestObjects.HasByteArray, Newtonsoft.Json.Tests"",
+  ""EncryptedPassword"": {
+    ""$type"": ""System.Byte[], mscorlib"",
+    ""$value"": ""cGFzc3dvcmQ="",
+    ""$value"": ""cGFzc3dvcmQ=""
+  }
+}";
+
+            ExceptionAssert.Throws<JsonReaderException>(() =>
+            {
+                JsonConvert.DeserializeObject<HasByteArray>(json, new JsonSerializerSettings
+                {
+                    TypeNameHandling = TypeNameHandling.Objects
+                });
+            }, "Error reading bytes. Unexpected token: PropertyName. Path 'EncryptedPassword.$value', line 6, position 13.");
+        }
+
+        [Test]
+        public void DeserializeByteArrayWithTypeName_ExtraProperty()
+        {
+            string json = @"{
+  ""$type"": ""Newtonsoft.Json.Tests.TestObjects.HasByteArray, Newtonsoft.Json.Tests"",
+  ""EncryptedPassword"": {
+    ""$type"": ""System.Byte[], mscorlib"",
+    ""$value"": ""cGFzc3dvcmQ=""
+  },
+  ""Pie"": null
+}";
+            HasByteArray value = JsonConvert.DeserializeObject<HasByteArray>(json, new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.Objects
+            });
+
+            Assert.IsNotNull(value.EncryptedPassword);
+            CollectionAssert.AreEquivalent(Convert.FromBase64String("cGFzc3dvcmQ="), value.EncryptedPassword);
+        }
+
+#if !(NET20 || NET35)
+        [Test]
+        public void SerializeValueTupleWithTypeName()
+        {
+            string tupleRef = ReflectionUtils.GetTypeName(typeof(ValueTuple<int, int, string>), TypeNameAssemblyFormatHandling.Simple, null);
+
+            ValueTuple<int, int, string> t = ValueTuple.Create(1, 2, "string");
+
+            string json = JsonConvert.SerializeObject(t, Formatting.Indented, new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.All
+            });
+
+            StringAssert.AreEqual(@"{
+  ""$type"": """ + tupleRef + @""",
+  ""Item1"": 1,
+  ""Item2"": 2,
+  ""Item3"": ""string""
+}", json);
+
+            ValueTuple<int, int, string> t2 = (ValueTuple<int, int, string>)JsonConvert.DeserializeObject(json, new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.All
+            });
+
+            Assert.AreEqual(1, t2.Item1);
+            Assert.AreEqual(2, t2.Item2);
+            Assert.AreEqual("string", t2.Item3);
+        }
+#endif
+
 #if !(NET20 || NET35 || NET40)
         public class KnownAutoTypes
         {
@@ -96,8 +190,6 @@ namespace Newtonsoft.Json.Tests.Serialization
                 TypeNameHandling = TypeNameHandling.Auto
             });
 
-            Console.WriteLine(json);
-
             StringAssert.AreEqual(@"{
   ""Collection"": [
     ""Collection value!""
@@ -129,7 +221,7 @@ namespace Newtonsoft.Json.Tests.Serialization
         {
             Dictionary<string, object> dic = new Dictionary<string, object>
             {
-                { "movie", new Movie { Name = "Die Hard"}}
+                { "movie", new Movie { Name = "Die Hard" } }
             };
 
             string json = JsonConvert.SerializeObject(dic, Formatting.Indented, new JsonSerializerSettings
@@ -155,7 +247,7 @@ namespace Newtonsoft.Json.Tests.Serialization
         {
             IList<KeyValuePair<string, object>> dic = new List<KeyValuePair<string, object>>
             {
-                new KeyValuePair<string, object>("movie", new Movie { Name = "Die Hard"})
+                new KeyValuePair<string, object>("movie", new Movie { Name = "Die Hard" })
             };
 
             string json = JsonConvert.SerializeObject(dic, Formatting.Indented, new JsonSerializerSettings
@@ -183,7 +275,7 @@ namespace Newtonsoft.Json.Tests.Serialization
         public void NestedValueObjects()
         {
             StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 10000; i++)
+            for (int i = 0; i < 3; i++)
             {
                 sb.Append(@"{""$value"":");
             }
@@ -193,7 +285,7 @@ namespace Newtonsoft.Json.Tests.Serialization
                 var reader = new JsonTextReader(new StringReader(sb.ToString()));
                 var ser = new JsonSerializer();
                 ser.MetadataPropertyHandling = MetadataPropertyHandling.Default;
-                ser.Deserialize<bool>(reader);
+                ser.Deserialize<sbyte>(reader);
             }, "Unexpected token when deserializing primitive value: StartObject. Path '$value', line 1, position 11.");
         }
 
@@ -209,7 +301,7 @@ namespace Newtonsoft.Json.Tests.Serialization
             var result = sw.ToString();
 
             StringAssert.AreEqual(@"{
-  ""$type"": ""Newtonsoft.Json.Tests.TestObjects.WagePerson, Newtonsoft.Json.Tests"",
+  ""$type"": ""Newtonsoft.Json.Tests.TestObjects.Organization.WagePerson, Newtonsoft.Json.Tests"",
   ""HourlyWage"": 0.0,
   ""Name"": null,
   ""BirthDate"": ""0001-01-01T00:00:00"",
@@ -234,12 +326,40 @@ namespace Newtonsoft.Json.Tests.Serialization
             });
 
             StringAssert.AreEqual(@"{
-  ""$type"": ""Newtonsoft.Json.Tests.TestObjects.WagePerson, Newtonsoft.Json.Tests"",
+  ""$type"": ""Newtonsoft.Json.Tests.TestObjects.Organization.WagePerson, Newtonsoft.Json.Tests"",
   ""HourlyWage"": 0.0,
   ""Name"": null,
   ""BirthDate"": ""0001-01-01T00:00:00"",
   ""LastModified"": ""0001-01-01T00:00:00""
 }", json);
+        }
+
+        [Test]
+        public void SerializeRootTypeNameAutoWithJsonConvert_Generic()
+        {
+            string json = JsonConvert.SerializeObject(new WagePerson(), typeof(object), Formatting.Indented, new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.Auto
+            });
+
+            StringAssert.AreEqual(@"{
+  ""$type"": ""Newtonsoft.Json.Tests.TestObjects.Organization.WagePerson, Newtonsoft.Json.Tests"",
+  ""HourlyWage"": 0.0,
+  ""Name"": null,
+  ""BirthDate"": ""0001-01-01T00:00:00"",
+  ""LastModified"": ""0001-01-01T00:00:00""
+}", json);
+        }
+
+        [Test]
+        public void SerializeRootTypeNameAutoWithJsonConvert_Generic2()
+        {
+            string json = JsonConvert.SerializeObject(new WagePerson(), typeof(object), new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.Auto
+            });
+
+            StringAssert.AreEqual(@"{""$type"":""Newtonsoft.Json.Tests.TestObjects.Organization.WagePerson, Newtonsoft.Json.Tests"",""HourlyWage"":0.0,""Name"":null,""BirthDate"":""0001-01-01T00:00:00"",""LastModified"":""0001-01-01T00:00:00""}", json);
         }
 
         public class Wrapper
@@ -291,7 +411,7 @@ namespace Newtonsoft.Json.Tests.Serialization
         [Test]
         public void WriteTypeNameForObjects()
         {
-            string employeeRef = ReflectionUtils.GetTypeName(typeof(EmployeeReference), FormatterAssemblyStyle.Simple, null);
+            string employeeRef = ReflectionUtils.GetTypeName(typeof(EmployeeReference), TypeNameAssemblyFormatHandling.Simple, null);
 
             EmployeeReference employee = new EmployeeReference();
 
@@ -311,7 +431,7 @@ namespace Newtonsoft.Json.Tests.Serialization
         [Test]
         public void DeserializeTypeName()
         {
-            string employeeRef = ReflectionUtils.GetTypeName(typeof(EmployeeReference), FormatterAssemblyStyle.Simple, null);
+            string employeeRef = ReflectionUtils.GetTypeName(typeof(EmployeeReference), TypeNameAssemblyFormatHandling.Simple, null);
 
             string json = @"{
   ""$id"": ""1"",
@@ -329,11 +449,11 @@ namespace Newtonsoft.Json.Tests.Serialization
             Assert.AreEqual("Name!", ((EmployeeReference)employee).Name);
         }
 
-#if !(NETFX_CORE || PORTABLE || ASPNETCORE50)
+#if !(PORTABLE || DNXCORE50)
         [Test]
         public void DeserializeTypeNameFromGacAssembly()
         {
-            string cookieRef = ReflectionUtils.GetTypeName(typeof(Cookie), FormatterAssemblyStyle.Simple, null);
+            string cookieRef = ReflectionUtils.GetTypeName(typeof(Cookie), TypeNameAssemblyFormatHandling.Simple, null);
 
             string json = @"{
   ""$id"": ""1"",
@@ -375,7 +495,9 @@ namespace Newtonsoft.Json.Tests.Serialization
             string json = JsonConvert.SerializeObject(values, Formatting.Indented, new JsonSerializerSettings
             {
                 TypeNameHandling = TypeNameHandling.Objects,
+#pragma warning disable 618
                 TypeNameAssemblyFormat = FormatterAssemblyStyle.Full
+#pragma warning restore 618
             });
 
             StringAssert.AreEqual(@"[
@@ -432,7 +554,9 @@ namespace Newtonsoft.Json.Tests.Serialization
             List<object> values = (List<object>)JsonConvert.DeserializeObject(json, typeof(List<object>), new JsonSerializerSettings
             {
                 TypeNameHandling = TypeNameHandling.Objects,
+#pragma warning disable 618
                 TypeNameAssemblyFormat = FormatterAssemblyStyle.Full
+#pragma warning restore 618
             });
 
             Assert.AreEqual(4, values.Count);
@@ -469,7 +593,9 @@ namespace Newtonsoft.Json.Tests.Serialization
                 JsonConvert.DeserializeObject(json, typeof(Person), new JsonSerializerSettings
                 {
                     TypeNameHandling = TypeNameHandling.Objects,
+#pragma warning disable 618
                     TypeNameAssemblyFormat = FormatterAssemblyStyle.Full
+#pragma warning restore 618
                 });
             }
             catch (JsonSerializationException ex)
@@ -514,7 +640,7 @@ namespace Newtonsoft.Json.Tests.Serialization
                 {
                     TypeNameHandling = TypeNameHandling.Objects
                 });
-            }, "Type specified in JSON 'Newtonsoft.Json.Tests.TestObjects.Employee' was not resolved. Path '$type', line 3, position 56.");
+            }, "Type specified in JSON 'Newtonsoft.Json.Tests.TestObjects.Employee' was not resolved. Path '$type', line 3, position 55.");
         }
 
         public interface ICorrelatedMessage
@@ -562,7 +688,9 @@ namespace Newtonsoft.Json.Tests.Serialization
             ICorrelatedMessage message = JsonConvert.DeserializeObject<ICorrelatedMessage>(json, new JsonSerializerSettings
             {
                 TypeNameHandling = TypeNameHandling.Objects,
+#pragma warning disable 618
                 TypeNameAssemblyFormat = FormatterAssemblyStyle.Full
+#pragma warning restore 618
             });
 
             CustomAssert.IsInstanceOfType(typeof(SendHttpRequest), message);
@@ -590,7 +718,9 @@ namespace Newtonsoft.Json.Tests.Serialization
                 {
                     NullValueHandling = NullValueHandling.Ignore,
                     TypeNameHandling = TypeNameHandling.All,
+#pragma warning disable 618
                     TypeNameAssemblyFormat = FormatterAssemblyStyle.Full
+#pragma warning restore 618
                 });
 
             StringAssert.AreEqual(@"{
@@ -617,7 +747,7 @@ namespace Newtonsoft.Json.Tests.Serialization
         [Test]
         public void WriteObjectTypeNameForProperty()
         {
-            string typeNamePropertyRef = ReflectionUtils.GetTypeName(typeof(TypeNameProperty), FormatterAssemblyStyle.Simple, null);
+            string typeNamePropertyRef = ReflectionUtils.GetTypeName(typeof(TypeNameProperty), TypeNameAssemblyFormatHandling.Simple, null);
 
             TypeNameProperty typeNameProperty = new TypeNameProperty
             {
@@ -651,7 +781,7 @@ namespace Newtonsoft.Json.Tests.Serialization
         [Test]
         public void WriteListTypeNameForProperty()
         {
-            string listRef = ReflectionUtils.GetTypeName(typeof(List<int>), FormatterAssemblyStyle.Simple, null);
+            string listRef = ReflectionUtils.GetTypeName(typeof(List<int>), TypeNameAssemblyFormatHandling.Simple, null);
 
             TypeNameProperty typeNameProperty = new TypeNameProperty
             {
@@ -700,7 +830,9 @@ namespace Newtonsoft.Json.Tests.Serialization
             object p = JsonConvert.DeserializeObject(json, null, new JsonSerializerSettings
             {
                 TypeNameHandling = TypeNameHandling.Objects,
+#pragma warning disable CS0618 // Type or member is obsolete
                 Binder = new CustomSerializationBinder()
+#pragma warning restore CS0618 // Type or member is obsolete
             });
 
             CustomAssert.IsInstanceOfType(typeof(Person), p);
@@ -741,7 +873,9 @@ namespace Newtonsoft.Json.Tests.Serialization
             string json = JsonConvert.SerializeObject(values, Formatting.Indented, new JsonSerializerSettings
             {
                 TypeNameHandling = TypeNameHandling.Auto,
+#pragma warning disable CS0618 // Type or member is obsolete
                 Binder = binder
+#pragma warning restore CS0618 // Type or member is obsolete
             });
 
             //[
@@ -756,7 +890,6 @@ namespace Newtonsoft.Json.Tests.Serialization
             //    "Quantity": 1
             //  }
             //]
-
 
             StringAssert.AreEqual(@"[
   {
@@ -774,7 +907,9 @@ namespace Newtonsoft.Json.Tests.Serialization
             IList<object> newValues = JsonConvert.DeserializeObject<IList<object>>(json, new JsonSerializerSettings
             {
                 TypeNameHandling = TypeNameHandling.Auto,
+#pragma warning disable CS0618 // Type or member is obsolete
                 Binder = new TypeNameSerializationBinder("Newtonsoft.Json.Tests.Serialization.{0}, Newtonsoft.Json.Tests")
+#pragma warning restore CS0618 // Type or member is obsolete
             });
 
             CustomAssert.IsInstanceOfType(typeof(Customer), newValues[0]);
@@ -811,6 +946,95 @@ namespace Newtonsoft.Json.Tests.Serialization
 #endif
 
         [Test]
+        public void NewSerializeUsingCustomBinder()
+        {
+            NewTypeNameSerializationBinder binder = new NewTypeNameSerializationBinder("Newtonsoft.Json.Tests.Serialization.{0}, Newtonsoft.Json.Tests");
+
+            IList<object> values = new List<object>
+            {
+                new Customer
+                {
+                    Name = "Caroline Customer"
+                },
+                new Purchase
+                {
+                    ProductName = "Elbow Grease",
+                    Price = 5.99m,
+                    Quantity = 1
+                }
+            };
+
+            string json = JsonConvert.SerializeObject(values, Formatting.Indented, new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.Auto,
+                SerializationBinder = binder
+            });
+
+            //[
+            //  {
+            //    "$type": "Customer",
+            //    "Name": "Caroline Customer"
+            //  },
+            //  {
+            //    "$type": "Purchase",
+            //    "ProductName": "Elbow Grease",
+            //    "Price": 5.99,
+            //    "Quantity": 1
+            //  }
+            //]
+
+            StringAssert.AreEqual(@"[
+  {
+    ""$type"": ""Customer"",
+    ""Name"": ""Caroline Customer""
+  },
+  {
+    ""$type"": ""Purchase"",
+    ""ProductName"": ""Elbow Grease"",
+    ""Price"": 5.99,
+    ""Quantity"": 1
+  }
+]", json);
+
+            IList<object> newValues = JsonConvert.DeserializeObject<IList<object>>(json, new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.Auto,
+                SerializationBinder = new NewTypeNameSerializationBinder("Newtonsoft.Json.Tests.Serialization.{0}, Newtonsoft.Json.Tests")
+            });
+
+            CustomAssert.IsInstanceOfType(typeof(Customer), newValues[0]);
+            Customer customer = (Customer)newValues[0];
+            Assert.AreEqual("Caroline Customer", customer.Name);
+
+            CustomAssert.IsInstanceOfType(typeof(Purchase), newValues[1]);
+            Purchase purchase = (Purchase)newValues[1];
+            Assert.AreEqual("Elbow Grease", purchase.ProductName);
+        }
+
+        public class NewTypeNameSerializationBinder : ISerializationBinder
+        {
+            public string TypeFormat { get; private set; }
+
+            public NewTypeNameSerializationBinder(string typeFormat)
+            {
+                TypeFormat = typeFormat;
+            }
+
+            public void BindToName(Type serializedType, out string assemblyName, out string typeName)
+            {
+                assemblyName = null;
+                typeName = serializedType.Name;
+            }
+
+            public Type BindToType(string assemblyName, string typeName)
+            {
+                string resolvedTypeName = string.Format(TypeFormat, typeName);
+
+                return Type.GetType(resolvedTypeName, true);
+            }
+        }
+
+        [Test]
         public void CollectionWithAbstractItems()
         {
             HolderClass testObject = new HolderClass();
@@ -833,9 +1057,9 @@ namespace Newtonsoft.Json.Tests.Serialization
 
             string json = sw.ToString();
 
-            string contentSubClassRef = ReflectionUtils.GetTypeName(typeof(ContentSubClass), FormatterAssemblyStyle.Simple, null);
-            string dictionaryRef = ReflectionUtils.GetTypeName(typeof(Dictionary<int, IList<ContentBaseClass>>), FormatterAssemblyStyle.Simple, null);
-            string listRef = ReflectionUtils.GetTypeName(typeof(List<ContentBaseClass>), FormatterAssemblyStyle.Simple, null);
+            string contentSubClassRef = ReflectionUtils.GetTypeName(typeof(ContentSubClass), TypeNameAssemblyFormatHandling.Simple, null);
+            string dictionaryRef = ReflectionUtils.GetTypeName(typeof(Dictionary<int, IList<ContentBaseClass>>), TypeNameAssemblyFormatHandling.Simple, null);
+            string listRef = ReflectionUtils.GetTypeName(typeof(List<ContentBaseClass>), TypeNameAssemblyFormatHandling.Simple, null);
 
             string expected = @"{
   ""TestMember"": {
@@ -917,7 +1141,6 @@ namespace Newtonsoft.Json.Tests.Serialization
             public string Url { get; set; }
         }
 
-
         [Test]
         public void GenericDictionaryObject()
         {
@@ -937,13 +1160,17 @@ namespace Newtonsoft.Json.Tests.Serialization
             string json = JsonConvert.SerializeObject(collection, Formatting.Indented, new JsonSerializerSettings
             {
                 TypeNameHandling = TypeNameHandling.All,
+#pragma warning disable 618
                 TypeNameAssemblyFormat = FormatterAssemblyStyle.Simple
+#pragma warning restore 618
             });
 
-            string urlStatusTypeName = ReflectionUtils.GetTypeName(typeof(UrlStatus), FormatterAssemblyStyle.Simple, null);
+            string dictionaryTypeName = ReflectionUtils.GetTypeName(typeof(Dictionary<string, object>), TypeNameAssemblyFormatHandling.Simple, null);
+            string urlStatusTypeName = ReflectionUtils.GetTypeName(typeof(UrlStatus), TypeNameAssemblyFormatHandling.Simple, null);
+            string listTypeName = ReflectionUtils.GetTypeName(typeof(List<UrlStatus>), TypeNameAssemblyFormatHandling.Simple, null);
 
             StringAssert.AreEqual(@"{
-  ""$type"": ""System.Collections.Generic.Dictionary`2[[System.String, mscorlib],[System.Object, mscorlib]], mscorlib"",
+  ""$type"": """ + dictionaryTypeName + @""",
   ""First"": {
     ""$type"": """ + urlStatusTypeName + @""",
     ""Status"": 404,
@@ -955,7 +1182,7 @@ namespace Newtonsoft.Json.Tests.Serialization
     ""Url"": ""http://www.google.com""
   },
   ""List"": {
-    ""$type"": ""System.Collections.Generic.List`1[[" + urlStatusTypeName + @"]], mscorlib"",
+    ""$type"": """ + listTypeName + @""",
     ""$values"": [
       {
         ""$type"": """ + urlStatusTypeName + @""",
@@ -974,7 +1201,9 @@ namespace Newtonsoft.Json.Tests.Serialization
             object c = JsonConvert.DeserializeObject(json, new JsonSerializerSettings
             {
                 TypeNameHandling = TypeNameHandling.All,
+#pragma warning disable 618
                 TypeNameAssemblyFormat = FormatterAssemblyStyle.Simple
+#pragma warning restore 618
             });
 
             CustomAssert.IsInstanceOfType(typeof(Dictionary<string, object>), c);
@@ -987,11 +1216,10 @@ namespace Newtonsoft.Json.Tests.Serialization
             Assert.AreEqual(2, statues.Count);
         }
 
-
         [Test]
         public void SerializingIEnumerableOfTShouldRetainGenericTypeInfo()
         {
-            string productClassRef = ReflectionUtils.GetTypeName(typeof(CustomEnumerable<Product>), FormatterAssemblyStyle.Simple, null);
+            string productClassRef = ReflectionUtils.GetTypeName(typeof(CustomEnumerable<Product>), TypeNameAssemblyFormatHandling.Simple, null);
 
             CustomEnumerable<Product> products = new CustomEnumerable<Product>();
 
@@ -1030,14 +1258,18 @@ namespace Newtonsoft.Json.Tests.Serialization
             public IEnumerator<T> GetEnumerator()
             {
                 if (count == 0) // last node
+                {
                     yield break;
+                }
                 yield return value;
 
                 var nextInLine = next;
                 while (nextInLine != null)
                 {
                     if (nextInLine.count != 0)
+                    {
                         yield return nextInLine.value;
+                    }
                     nextInLine = nextInLine.next;
                 }
             }
@@ -1075,16 +1307,18 @@ namespace Newtonsoft.Json.Tests.Serialization
 
             string output = JsonConvert.SerializeObject(testerObject, Formatting.Indented, jsonSettings);
 
-            string carClassRef = ReflectionUtils.GetTypeName(typeof(Car), FormatterAssemblyStyle.Simple, null);
+            string carClassRef = ReflectionUtils.GetTypeName(typeof(Car), TypeNameAssemblyFormatHandling.Simple, null);
+            string objectArrayRef = ReflectionUtils.GetTypeName(typeof(object[]), TypeNameAssemblyFormatHandling.Simple, null);
+            string byteArrayRef = ReflectionUtils.GetTypeName(typeof(byte[]), TypeNameAssemblyFormatHandling.Simple, null);
 
             StringAssert.AreEqual(output, @"{
   ""$type"": """ + carClassRef + @""",
   ""Year"": ""2000-10-05T01:01:01Z"",
   ""Objects"": {
-    ""$type"": ""System.Object[], mscorlib"",
+    ""$type"": """ + objectArrayRef + @""",
     ""$values"": [
       {
-        ""$type"": ""System.Byte[], mscorlib"",
+        ""$type"": """ + byteArrayRef + @""",
         ""$value"": ""S0FSSVJB""
       },
       ""prueba""
@@ -1101,7 +1335,7 @@ namespace Newtonsoft.Json.Tests.Serialization
             CollectionAssert.AreEquivalent(data, d);
         }
 
-#if !(NETFX_CORE || ASPNETCORE50)
+#if !(DNXCORE50) || NETSTANDARD2_0
         [Test]
         public void ISerializableTypeNameHandlingTest()
         {
@@ -1127,7 +1361,6 @@ namespace Newtonsoft.Json.Tests.Serialization
 
         private void TestJsonSerializationRoundTrip(SerializableWrapper e, TypeNameHandling flag)
         {
-            Console.WriteLine("Type Name Handling: " + flag.ToString());
             StringWriter writer = new StringWriter();
 
             //Create our serializer and set Type Name Handling appropriately
@@ -1136,8 +1369,6 @@ namespace Newtonsoft.Json.Tests.Serialization
 
             //Do the actual serialization and dump to Console for inspection
             serializer.Serialize(new JsonTextWriter(writer), e);
-            Console.WriteLine(writer.ToString());
-            Console.WriteLine();
 
             //Now try to deserialize
             //Json.Net will cause an error here as it will try and instantiate
@@ -1163,11 +1394,13 @@ namespace Newtonsoft.Json.Tests.Serialization
             string json = JsonConvert.SerializeObject(message, Formatting.Indented, new JsonSerializerSettings
             {
                 TypeNameHandling = TypeNameHandling.All,
+#pragma warning disable CS0618 // Type or member is obsolete
                 TypeNameAssemblyFormat = FormatterAssemblyStyle.Full,
                 Binder = new MetroBinder(),
+#pragma warning restore CS0618 // Type or member is obsolete
                 ContractResolver = new DefaultContractResolver
                 {
-#if !(NETFX_CORE || PORTABLE || ASPNETCORE50)
+#if !(PORTABLE || DNXCORE50)
                     IgnoreSerializableAttribute = true
 #endif
                 }
@@ -1198,7 +1431,7 @@ namespace Newtonsoft.Json.Tests.Serialization
             public override void BindToName(Type serializedType, out string assemblyName, out string typeName)
             {
                 assemblyName = "AssemblyName";
-#if !(NETFX_CORE || ASPNETCORE50)
+#if !(DNXCORE50)
                 typeName = ":::" + serializedType.Name.ToUpper(CultureInfo.InvariantCulture) + ":::";
 #else
                 typeName = ":::" + serializedType.Name.ToUpper() + ":::";
@@ -1245,7 +1478,7 @@ namespace Newtonsoft.Json.Tests.Serialization
     ""MyProperty"": 0
   },
   {
-    ""$type"": ""Newtonsoft.Json.Tests.TestObjects.Employee, Newtonsoft.Json.Tests"",
+    ""$type"": ""Newtonsoft.Json.Tests.TestObjects.Organization.Employee, Newtonsoft.Json.Tests"",
     ""FirstName"": null,
     ""LastName"": null,
     ""BirthDate"": ""2000-12-12T12:12:12Z"",
@@ -1382,6 +1615,9 @@ namespace Newtonsoft.Json.Tests.Serialization
             };
 
             string json = JsonConvert.SerializeObject(c1, Formatting.Indented);
+
+            string listTypeName = ReflectionUtils.GetTypeName(typeof(List<object>), TypeNameAssemblyFormatHandling.Simple, null);
+
             StringAssert.AreEqual(@"{
   ""Data"": [
     {
@@ -1389,7 +1625,7 @@ namespace Newtonsoft.Json.Tests.Serialization
       ""MyProperty"": 1
     },
     {
-      ""$type"": ""System.Collections.Generic.List`1[[System.Object, mscorlib]], mscorlib"",
+      ""$type"": """+ listTypeName + @""",
       ""$values"": [
         [
           []
@@ -1414,7 +1650,7 @@ namespace Newtonsoft.Json.Tests.Serialization
       ""MyProperty"": 1
     },
     {
-      ""$type"": ""System.Collections.Generic.List`1[[System.Object, mscorlib]], mscorlib"",
+      ""$type"": """ + listTypeName + @""",
       ""$values"": [
         {
           ""$type"": ""Newtonsoft.Json.Tests.TestObjects.TestComponentSimple, Newtonsoft.Json.Tests"",
@@ -1461,6 +1697,9 @@ namespace Newtonsoft.Json.Tests.Serialization
             };
 
             string json = JsonConvert.SerializeObject(c1, Formatting.Indented);
+
+            string dictionaryTypeName = ReflectionUtils.GetTypeName(typeof(Dictionary<string, object>), TypeNameAssemblyFormatHandling.Simple, null);
+
             StringAssert.AreEqual(@"{
   ""Data"": {
     ""one"": {
@@ -1468,7 +1707,7 @@ namespace Newtonsoft.Json.Tests.Serialization
       ""MyProperty"": 1
     },
     ""two"": {
-      ""$type"": ""System.Collections.Generic.Dictionary`2[[System.String, mscorlib],[System.Object, mscorlib]], mscorlib"",
+      ""$type"": """ + dictionaryTypeName + @""",
       ""one"": {
         ""one"": 1
       }
@@ -1491,7 +1730,7 @@ namespace Newtonsoft.Json.Tests.Serialization
       ""MyProperty"": 1
     },
     ""two"": {
-      ""$type"": ""System.Collections.Generic.Dictionary`2[[System.String, mscorlib],[System.Object, mscorlib]], mscorlib"",
+      ""$type"": """ + dictionaryTypeName + @""",
       ""one"": {
         ""$type"": ""Newtonsoft.Json.Tests.TestObjects.TestComponentSimple, Newtonsoft.Json.Tests"",
         ""MyProperty"": 1
@@ -1536,10 +1775,13 @@ namespace Newtonsoft.Json.Tests.Serialization
             };
 
             string json = JsonConvert.SerializeObject(o1, Formatting.Indented);
+
+            string listTypeName = ReflectionUtils.GetTypeName(typeof(List<object>), TypeNameAssemblyFormatHandling.Simple, null);
+
             StringAssert.AreEqual(@"{
   ""Data"": {
     ""Prop1"": {
-      ""$type"": ""System.Collections.Generic.List`1[[System.Object, mscorlib]], mscorlib"",
+      ""$type"": """ + listTypeName + @""",
       ""$values"": [
         {
           ""MyProperty"": 1
@@ -1643,12 +1885,12 @@ namespace Newtonsoft.Json.Tests.Serialization
         }
 #endif
 
-#if !(NETFX_CORE || ASPNETCORE50)
+#if !(DNXCORE50) || NETSTANDARD2_0
         [Test]
         public void SerializeDeserialize_DictionaryContextContainsGuid_DeserializesItemAsGuid()
         {
             const string contextKey = "k1";
-            var someValue = Guid.NewGuid();
+            var someValue = new Guid("a6e986df-fc2c-4906-a1ef-9492388f7833");
 
             Dictionary<string, Guid> inputContext = new Dictionary<string, Guid>();
             inputContext.Add(contextKey, someValue);
@@ -1660,7 +1902,12 @@ namespace Newtonsoft.Json.Tests.Serialization
             };
             string serializedString = JsonConvert.SerializeObject(inputContext, jsonSerializerSettings);
 
-            Console.WriteLine(serializedString);
+            string dictionaryTypeName = ReflectionUtils.GetTypeName(typeof(Dictionary<string, Guid>), TypeNameAssemblyFormatHandling.Simple, null);
+
+            StringAssert.AreEqual(@"{
+  ""$type"": """ + dictionaryTypeName + @""",
+  ""k1"": ""a6e986df-fc2c-4906-a1ef-9492388f7833""
+}", serializedString);
 
             var deserializedObject = (Dictionary<string, Guid>)JsonConvert.DeserializeObject(serializedString, jsonSerializerSettings);
 
@@ -1791,22 +2038,23 @@ namespace Newtonsoft.Json.Tests.Serialization
 
             string serialized = JsonConvert.SerializeObject(input,
                 Newtonsoft.Json.Formatting.Indented,
-                new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.All, TypeNameAssemblyFormat = FormatterAssemblyStyle.Full } // TypeNameHandling.Auto will work
-            );
-
-            Console.WriteLine(serialized);
+                new JsonSerializerSettings
+                {
+                    TypeNameHandling = TypeNameHandling.All,
+#pragma warning disable 618
+                    TypeNameAssemblyFormat = FormatterAssemblyStyle.Full // TypeNameHandling.Auto will work
+#pragma warning restore 618
+                });
 
             var output = JsonConvert.DeserializeObject<List<Stack<string>>>(serialized,
                 new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.All }
-            );
+                );
 
-            foreach (var stack in output)
-            {
-                foreach (var value in stack)
-                {
-                    Console.WriteLine(value);
-                }
-            }
+            List<string> strings = output.SelectMany(s => s).ToList();
+
+            Assert.AreEqual(9, strings.Count);
+            Assert.AreEqual("One", strings[0]);
+            Assert.AreEqual("Nine", strings[8]);
         }
 
 #if !NET20
@@ -1836,9 +2084,237 @@ namespace Newtonsoft.Json.Tests.Serialization
             Assert.AreEqual(1UL, item.WantedUnitID);
         }
 #endif
+
+#if !(NET20 || NET35)
+        [Test]
+        public void GenericItemTypeCollection()
+        {
+            DataType data = new DataType();
+            data.Rows.Add("key", new List<MyInterfaceImplementationType> { new MyInterfaceImplementationType() { SomeProperty = "property" } });
+            string serialized = JsonConvert.SerializeObject(data, Formatting.Indented);
+
+            string listTypeName = ReflectionUtils.GetTypeName(typeof(List<MyInterfaceImplementationType>), TypeNameAssemblyFormatHandling.Simple, null);
+
+            StringAssert.AreEqual(@"{
+  ""Rows"": {
+    ""key"": {
+      ""$type"": """ + listTypeName + @""",
+      ""$values"": [
+        {
+          ""SomeProperty"": ""property""
+        }
+      ]
+    }
+  }
+}", serialized);
+
+            DataType deserialized = JsonConvert.DeserializeObject<DataType>(serialized);
+
+            Assert.AreEqual("property", deserialized.Rows["key"].First().SomeProperty);
+        }
+#endif
+
+#if !(NET20 || PORTABLE || PORTABLE40)
+        [Test]
+        public void DeserializeComplexGenericDictionary_Simple()
+        {
+            JsonSerializerSettings serializerSettings = new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.All,
+#pragma warning disable 618
+                TypeNameAssemblyFormat = FormatterAssemblyStyle.Simple
+#pragma warning restore 618
+            };
+
+            Dictionary<int, HashSet<string>> dictionary = new Dictionary<int, HashSet<string>>
+            {
+                { 1, new HashSet<string>(new[] { "test" }) },
+            };
+
+            string obtainedJson = JsonConvert.SerializeObject(dictionary, serializerSettings);
+
+            Dictionary<int, HashSet<string>> obtainedDictionary = (Dictionary<int, HashSet<string>>)JsonConvert.DeserializeObject(obtainedJson, serializerSettings);
+
+            Assert.IsNotNull(obtainedDictionary);
+        }
+
+        [Test]
+        public void DeserializeComplexGenericDictionary_Full()
+        {
+            JsonSerializerSettings serializerSettings = new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.All,
+#pragma warning disable 618
+                TypeNameAssemblyFormat = FormatterAssemblyStyle.Full
+#pragma warning restore 618
+            };
+
+            Dictionary<int, HashSet<string>> dictionary = new Dictionary<int, HashSet<string>>
+            {
+                { 1, new HashSet<string>(new[] { "test" }) },
+            };
+
+            string obtainedJson = JsonConvert.SerializeObject(dictionary, serializerSettings);
+
+            Dictionary<int, HashSet<string>> obtainedDictionary = (Dictionary<int, HashSet<string>>)JsonConvert.DeserializeObject(obtainedJson, serializerSettings);
+
+            Assert.IsNotNull(obtainedDictionary);
+        }
+
+        [Test]
+        public void SerializeNullableStructProperty_Auto()
+        {
+            JsonSerializerSettings serializerSettings = new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.Auto,
+                Formatting = Formatting.Indented
+            };
+
+            ObjectWithOptionalMessage objWithMessage = new ObjectWithOptionalMessage(new Message2("Hello!"));
+
+            string json = JsonConvert.SerializeObject(objWithMessage, serializerSettings);
+
+            StringAssert.AreEqual(@"{
+  ""Message"": {
+    ""Value"": ""Hello!""
+  }
+}", json);
+        }
+
+        [Test]
+        public void DeserializeNullableStructProperty_Auto()
+        {
+            JsonSerializerSettings serializerSettings = new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.Auto,
+                Formatting = Formatting.Indented
+            };
+
+            string json = @"{
+  ""Message"": {
+    ""Value"": ""Hello!""
+  }
+}";
+            ObjectWithOptionalMessage objWithMessage = JsonConvert.DeserializeObject<ObjectWithOptionalMessage>(json, serializerSettings);
+
+            StringAssert.AreEqual("Hello!", objWithMessage.Message.Value.Value);
+        }
+#endif
+
+#if !(NET20 || NET35)
+        [Test]
+        public void SerializerWithDefaultBinder()
+        {
+            var serializer = JsonSerializer.Create();
+#pragma warning disable CS0618
+            Assert.AreNotEqual(null, serializer.Binder);
+            Assert.IsInstanceOf(typeof(DefaultSerializationBinder), serializer.Binder);
+#pragma warning restore CS0618 // Type or member is obsolete
+            Assert.IsInstanceOf(typeof(DefaultSerializationBinder), serializer.SerializationBinder);
+        }
+
+        [Test]
+        public void ObsoleteBinderThrowsIfISerializationBinderSet()
+        {
+            var serializer = JsonSerializer.Create(new JsonSerializerSettings() { SerializationBinder = new FancyBinder() });
+            ExceptionAssert.Throws<InvalidOperationException>(() =>
+            {
+#pragma warning disable CS0618 // Type or member is obsolete
+                var serializationBinder = serializer.Binder;
+#pragma warning restore CS0618 // Type or member is obsolete
+                serializationBinder.ToString();
+            }, "Cannot get SerializationBinder because an ISerializationBinder was previously set.");
+
+            Assert.IsInstanceOf(typeof(FancyBinder), serializer.SerializationBinder);
+        }
+
+        [Test]
+        public void SetOldBinderAndSerializationBinderReturnsWrapper()
+        {
+#pragma warning disable CS0618 // Type or member is obsolete
+            var serializer = JsonSerializer.Create(new JsonSerializerSettings() { Binder = new OldBinder() });
+            Assert.IsInstanceOf(typeof(OldBinder), serializer.Binder);
+#pragma warning restore CS0618 // Type or member is obsolete
+
+            var binder = serializer.SerializationBinder;
+
+            Assert.IsInstanceOf(typeof(SerializationBinderAdapter), binder);
+            Assert.AreEqual(typeof(string), binder.BindToType(null, null));
+        }
+
+        public class FancyBinder : ISerializationBinder
+        {
+            private static readonly string Annotate = new string(':', 3);
+
+            public void BindToName(Type serializedType, out string assemblyName, out string typeName)
+            {
+                assemblyName = string.Format("FancyAssemblyName=>{0}", Assembly.GetAssembly(serializedType)?.GetName().Name);
+                typeName = string.Format("{0}{1}{0}", Annotate, serializedType.Name);
+            }
+
+            public Type BindToType(string assemblyName, string typeName)
+            {
+                return null;
+            }
+        }
+
+#pragma warning disable CS0618 // Type or member is obsolete
+        public class OldBinder : SerializationBinder
+        {
+            public override Type BindToType(string assemblyName, string typeName)
+            {
+                return typeof(string);
+            }
+        }
+#pragma warning restore CS0618 // Type or member is obsolete
+#endif
     }
 
-#if !(NETFX_CORE || ASPNETCORE50)
+    public struct Message2
+    {
+        public string Value { get; }
+
+        [JsonConstructor]
+        public Message2(string value)
+        {
+            if (value == null) throw new ArgumentNullException(nameof(value));
+
+            Value = value;
+        }
+    }
+
+    public class ObjectWithOptionalMessage
+    {
+        public Message2? Message { get; }
+
+        public ObjectWithOptionalMessage(Message2? message)
+        {
+            Message = message;
+        }
+    }
+
+    public class DataType
+    {
+        public DataType()
+        {
+            Rows = new Dictionary<string, IEnumerable<IMyInterfaceType>>();
+        }
+
+        [JsonProperty(ItemTypeNameHandling = TypeNameHandling.Auto, TypeNameHandling = TypeNameHandling.Auto)]
+        public Dictionary<string, IEnumerable<IMyInterfaceType>> Rows { get; private set; }
+    }
+
+    public interface IMyInterfaceType
+    {
+        string SomeProperty { get; set; }
+    }
+
+    public class MyInterfaceImplementationType : IMyInterfaceType
+    {
+        public string SomeProperty { get; set; }
+    }
+
+#if !(DNXCORE50) || NETSTANDARD2_0
     public class ParentParent
     {
         [JsonProperty(ItemTypeNameHandling = TypeNameHandling.Auto)]
@@ -1906,7 +2382,7 @@ namespace Newtonsoft.Json.Tests.Serialization
         public int Quantity { get; set; }
     }
 
-#if !(NETFX_CORE || ASPNETCORE50)
+#if !(DNXCORE50) || NETSTANDARD2_0
     public class SerializableWrapper
     {
         public object Content { get; set; }
@@ -1916,7 +2392,9 @@ namespace Newtonsoft.Json.Tests.Serialization
             SerializableWrapper w = obj as SerializableWrapper;
 
             if (w == null)
+            {
                 return false;
+            }
 
             return Equals(w.Content, Content);
         }
@@ -1924,7 +2402,9 @@ namespace Newtonsoft.Json.Tests.Serialization
         public override int GetHashCode()
         {
             if (Content == null)
+            {
                 return 0;
+            }
 
             return Content.GetHashCode();
         }
@@ -1959,8 +2439,14 @@ namespace Newtonsoft.Json.Tests.Serialization
 
         public override bool Equals(object obj)
         {
-            if (obj == null) return false;
-            if (ReferenceEquals(this, obj)) return true;
+            if (obj == null)
+            {
+                return false;
+            }
+            if (ReferenceEquals(this, obj))
+            {
+                return true;
+            }
             if (obj is IExample)
             {
                 return Name.Equals(((IExample)obj).Name);
@@ -1974,7 +2460,9 @@ namespace Newtonsoft.Json.Tests.Serialization
         public override int GetHashCode()
         {
             if (Name == null)
+            {
                 return 0;
+            }
 
             return Name.GetHashCode();
         }
@@ -2056,6 +2544,7 @@ namespace Newtonsoft.Json.Tests.Serialization
     {
         [DataMember]
         public int ID { get; set; }
+
         [DataMember]
         public string Name { get; set; }
     }
@@ -2074,5 +2563,4 @@ namespace Newtonsoft.Json.Tests.Serialization
     }
 #endif
 }
-
 #endif

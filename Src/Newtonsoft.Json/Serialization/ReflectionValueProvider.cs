@@ -43,7 +43,7 @@ namespace Newtonsoft.Json.Serialization
         /// <param name="memberInfo">The member info.</param>
         public ReflectionValueProvider(MemberInfo memberInfo)
         {
-            ValidationUtils.ArgumentNotNull(memberInfo, "memberInfo");
+            ValidationUtils.ArgumentNotNull(memberInfo, nameof(memberInfo));
             _memberInfo = memberInfo;
         }
 
@@ -73,6 +73,12 @@ namespace Newtonsoft.Json.Serialization
         {
             try
             {
+                // https://github.com/dotnet/corefx/issues/26053
+                if (_memberInfo is PropertyInfo propertyInfo && propertyInfo.PropertyType.IsByRef)
+                {
+                    throw new InvalidOperationException("Could not create getter for {0}. ByRef return values are not supported.".FormatWith(CultureInfo.InvariantCulture, propertyInfo));
+                }
+
                 return ReflectionUtils.GetMemberValue(_memberInfo, target);
             }
             catch (Exception ex)
